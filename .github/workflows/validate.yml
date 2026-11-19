@@ -1,0 +1,28 @@
+name: Student deployment manifest validation
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check release script and Compose
+        env:
+          STUDENT_SOURCE_SHA: "0000000000000000000000000000000000000000"
+        run: |
+          bash -n deployment/release.sh
+          docker compose -f deployment/compose.yml config --quiet
+          grep -q 'ghcr.io/suaveforge/student' deployment/compose.yml
+          test ! -e public/index.html
+      - name: Prevent source, private data or recordings in deploy repository
+        run: |
+          if git ls-files | grep -E '(^\.env$|\.sqlite$|\.mp4$|(^|/)node_modules/|^public/|^server\.mjs$)'; then
+            echo 'Deploy repository must not contain application source or runtime data' >&2
+            exit 1
+          fi

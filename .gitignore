@@ -1,0 +1,5 @@
+.env
+*.sqlite
+*.sqlite-*
+*.mp4
+node_modules/

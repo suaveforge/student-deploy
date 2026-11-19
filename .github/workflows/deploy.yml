@@ -1,0 +1,71 @@
+name: Student full-stack deployment (gated)
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: "Exact 40-character source commit SHA from successful student CI"
+        type: string
+        required: true
+  repository_dispatch:
+    types: [student-release]
+permissions:
+  contents: read
+concurrency:
+  group: suaveforge-student-production
+  cancel-in-progress: false
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      source_sha: ${{ steps.version.outputs.source_sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate source SHA and Compose
+        id: version
+        shell: bash
+        env:
+          REQUESTED_SHA: ${{ github.event_name == 'repository_dispatch' && github.event.client_payload.source_sha || inputs.source_sha }}
+        run: |
+          if [[ ! "$REQUESTED_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Invalid SHA; refusing deployment" >&2
+            exit 2
+          fi
+          echo "source_sha=$REQUESTED_SHA" >> "$GITHUB_OUTPUT"
+          bash -n deployment/release.sh
+          STUDENT_SOURCE_SHA="$REQUESTED_SHA" docker compose -f deployment/compose.yml config --quiet
+  deploy:
+    needs: validate
+    if: ${{ vars.STUDENT_DEPLOY_ENABLED == 'true' }}
+    environment: student-production
+    runs-on: [self-hosted, student-deploy]
+    timeout-minutes: 25
+    env:
+      STUDENT_SOURCE_SHA: ${{ needs.validate.outputs.source_sha }}
+      STUDENT_DEPLOY_ENABLED: ${{ vars.STUDENT_DEPLOY_ENABLED }}
+      STUDENT_HOST_APPROVED: ${{ vars.STUDENT_HOST_APPROVED }}
+      STUDENT_DNS_READY: ${{ vars.STUDENT_DNS_READY }}
+      STUDENT_HTTPS_READY: ${{ vars.STUDENT_HTTPS_READY }}
+      STUDENT_DEMO_ACCESS_RESTRICTED: ${{ vars.STUDENT_DEMO_ACCESS_RESTRICTED }}
+      GHCR_USER: ${{ secrets.STUDENT_GHCR_USER }}
+      GHCR_READ_TOKEN: ${{ secrets.STUDENT_GHCR_READ_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Authenticate to private application image
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$GHCR_READ_TOKEN"
+          test -n "$GHCR_USER"
+          echo "$GHCR_READ_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin >/dev/null
+      - name: Deploy ONLY the isolated student service
+        shell: bash
+        run: bash deployment/release.sh "$STUDENT_SOURCE_SHA"
+      - name: Verify public TLS endpoint
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --show-error --silent --max-time 20 https://student.suaveforge.com/api/health | grep -q '"ok":true'
+          echo 'PASS student HTTPS health'
