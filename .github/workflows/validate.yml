@@ -1,4 +1,4 @@
-name: Student deployment manifest validation
+name: Student server123 deployment scripts validation
 on:
   push:
     branches: [main]
@@ -12,17 +12,23 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - name: Check release script and Compose
-        env:
-          STUDENT_SOURCE_SHA: "0000000000000000000000000000000000000000"
+      - name: Verify exact independent Student deployment script set
+        shell: bash
         run: |
-          bash -n deployment/release.sh
-          docker compose -f deployment/compose.yml config --quiet
-          grep -q 'ghcr.io/suaveforge/student' deployment/compose.yml
-          test ! -e public/index.html
-      - name: Prevent source, private data or recordings in deploy repository
+          set -Eeuo pipefail
+          for script in scripts/deploy-student-server123.sh scripts/configure-student-dns-server123.sh scripts/configure-student-caddy-server123.sh; do
+            test -f "$script"
+            bash -n "$script"
+          done
+          ! test -f server.mjs
+          ! test -f public/index.html
+          echo STUDENT_DEPLOY_REPO_SCRIPT_VALIDATION=PASS
+      - name: Reject secrets, DBs, MP4s and node_modules
+        shell: bash
         run: |
-          if git ls-files | grep -E '(^\.env$|\.sqlite$|\.mp4$|(^|/)node_modules/|^public/|^server\.mjs$)'; then
-            echo 'Deploy repository must not contain application source or runtime data' >&2
+          set -Eeuo pipefail
+          if git ls-files | grep -E '(^\.env$|\.sqlite$|\.mp4$|(^|/)node_modules/)'; then
+            echo STUDENT_DEPLOY_REPO_FORBIDDEN_FILES >&2
             exit 1
           fi
+          echo STUDENT_DEPLOY_REPO_ISOLATION=PASS
