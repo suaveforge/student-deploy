@@ -197,8 +197,8 @@ export function makeMonthlyUI(h){
    const safe=base+'/api/monthly-evidence/'+x.id;
    return [esc(x.filename),esc(x.mime),Number(x.file_size).toLocaleString('ko-KR')+' bytes',
     '<a class="link" target="_blank" rel="noopener noreferrer" href="'+esc(safe)+'">다운로드</a>'+
-     (role==='student'&&['draft','revision'].includes(r.status)?
-      ' <button class="link" onclick="app.monthlyDeleteEvidence('+x.id+')">삭제</button>':'')];
+     (role==='student'&&['draft','revision'].includes(r.status)&&!x.locked_submitted?
+      ' <button class="link" onclick="app.monthlyDeleteEvidence('+x.id+')>삭제</button>':'')];
   });
   h+=panel('보고서 첨부 증빙',table(['파일명','형식','크기','열람'],files,'첨부된 증빙이 없습니다.'),
    '본인·멘토교수·지도교수·부서만 열람할 수 있습니다. 제출 후에는 파일 임의 변경이 차단됩니다.');
@@ -206,6 +206,14 @@ export function makeMonthlyUI(h){
    '<a class="btn" target="_blank" rel="noopener noreferrer" href="'+esc(base+'/api/monthly-reports/'+r.id+'/print')+'">보고서 인쇄 / PDF 저장</a>'+
    (role==='student'&&['draft','revision'].includes(r.status)?
     '<button class="btn" onclick="app.monthlyAddEvidence('+r.id+')">증빙 첨부</button>':'')+'</div>';
+  if(r.versions?.length)h+=panel('제출본 원문 보존 · 이전 제출본 이력',
+   table(['제출 차수','제출일','보존된 보고서 내용','관련 실적','첨부'],
+    r.versions.map(v=>[v.revision+'차',esc(v.submitted_at),
+     '<details><summary>'+esc(v.snapshot.title)+'</summary><p>'+esc(v.snapshot.content)+
+      '</p><p>향후 계획: '+esc(v.snapshot.future_plan)+'</p></details>',
+     v.snapshot.activities.map(a=>'#'+a.id+' '+esc(a.title)).join('<br>')||'—',
+     v.snapshot.attachments.map(a=>esc(a.filename)).join('<br>')||'—'])),
+   '재제출 시 새 차수를 저장하며 이전 제출본·당시 첨부 기록·교수 확인 결과를 보존합니다.');
   if(r.review_history.length)
    h+=panel('제출본별 교수 확인 이력',table(['회차','담당','결과','의견'],r.review_history.map(x=>[
     esc(x.revision+'차'),esc(x.reviewer_role==='mentor'?'멘토':'지도'),
