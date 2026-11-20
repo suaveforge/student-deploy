@@ -39,7 +39,7 @@ if not isinstance(items,list):raise RuntimeError('DNS_RECORDS_API_UNEXPECTED')
 host='_acme-challenge.api-student'
 hits=[x for x in items if str(x.get('name','')).lower().rstrip('.') in (host,host+'.suaveforge.com')]
 if hits:raise RuntimeError('ACME_TXT_LABEL_ALREADY_USED_REFUSE_OVERWRITE')
-student=[x for x in items if str(x.get('name','')).lower().rstrip('.') in ('student','api-student.suaveforge.com')]
+student=[x for x in items if str(x.get('name','')).lower().rstrip('.') in ('api-student','api-student.suaveforge.com')]
 if len(student)!=1 or student[0].get('type','').upper()!='A':raise RuntimeError('STUDENT_A_NOT_VERIFIED')
 print('API_STUDENT_ACME_LABEL_FREE=YES')
 print('API_STUDENT_EXISTING_A_UNCHANGED=YES')
@@ -54,7 +54,7 @@ PY
   'umask 077; cat >/student/tls-api-acme/nginx/student.conf.new; mv /student/tls-api-acme/nginx/student.conf.new /student/tls-api-acme/nginx/student.conf' \
   < config/nginx-api-student-19444.conf
 # Use Spaceship DNS-01: no need to own/listen on 80 or 443.
-# The plugin only manages _acme-challenge.student TXT and removes its own value.
+# The plugin only manages _acme-challenge.api-student TXT and removes its own value.
 "$D" -H "$S" run --rm --network bridge \
   --cap-drop ALL --security-opt no-new-privileges \
   -v /home/suaveforge/secrets/spaceship.env:/run/spaceship.env:ro \
