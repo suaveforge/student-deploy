@@ -85,7 +85,7 @@ PY
   -v "$BASE/tls-acme/live:/etc/nginx/student-tls:ro" \
   nginx:1.27-alpine nginx -t
 "$D" -H "$S" run -d --name "$NAME" --restart unless-stopped \
-  --network host --read-only --cap-drop ALL \
+  --network host --read-only --cap-drop ALL --cap-add CHOWN --cap-add SETUID --cap-add SETGID \
   --security-opt no-new-privileges --memory 128m --pids-limit 80 \
   --tmpfs /var/cache/nginx:rw,nosuid,nodev,size=32m \
   --tmpfs /var/run:rw,nosuid,nodev,size=4m \
