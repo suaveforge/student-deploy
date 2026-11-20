@@ -1,25 +1,27 @@
-name: W01 configure portless GitHub Pages domain
+name: W01 verify portless Pages domain and certificate state (read only)
 on:
   push:
     branches: [main]
     paths: [CNAME, .github/workflows/configure-portless-pages.yml]
   workflow_dispatch:
 permissions:
-  pages: write
   contents: read
+  pages: read
 jobs:
-  configure:
+  inspect:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
-      - name: Register exact student domain for existing Pages main root
+      - name: Read existing Pages custom hostname and certificate state
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
         run: |
           set -Eeuo pipefail
           test "$(cat CNAME)" = "student.suaveforge.com"
-          gh api -X PUT "/repos/$GITHUB_REPOSITORY/pages" -f cname=student.suaveforge.com
-          current=$(gh api "/repos/$GITHUB_REPOSITORY/pages" --jq '.cname')
-          test "$current" = student.suaveforge.com
-          echo STUDENT_PAGES_CUSTOM_DOMAIN_REGISTERED=PASS
+          response=$(gh api "/repos/$GITHUB_REPOSITORY/pages")
+          echo "$response" | jq -c '{cname,https_enforced,certificate_state:(.https_certificate.state // "unknown")}'
+          configured=$(echo "$response" | jq -r '.cname // ""')
+          test "$configured" = "student.suaveforge.com"
+          echo STUDENT_PORTLESS_PAGES_DOMAIN_CONFIG=PASS
