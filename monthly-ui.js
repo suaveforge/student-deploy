@@ -54,7 +54,8 @@ export function makeMonthlyUI(h){
    html+='<p class="sub">학생별 담당 교수 변경은 두 교수 배정 화면에서만 가능합니다. 별도 부서 심사 결과는 실적별로 기록됩니다.</p>';
    html+='<div class="inline-btns">'+action('멘토·지도교수 배정','monthlyAssignReviewers()')+
     action('6P·MIRAE 인정 기준 관리','monthlyEditCriteria()')+
-    action('학생별 기준·현황 확인','monthlyChooseStudent()')+'</div>';
+    action('학생별 기준·현황 확인','monthlyChooseStudent()')+
+    action('부서 전체 현황·CSV 추출','monthlyAdminOverview()')+'</div>';
   }
   document.querySelector('#main').innerHTML=html;
  }
@@ -246,6 +247,72 @@ export function makeMonthlyUI(h){
    toast('현재 화면과 동일 계산 기준의 CSV를 저장했습니다.');
   }catch(e){toast('CSV 오류: '+e.message);}
  }
+ async function monthlyAdminOverview(){
+  const {items:users}=await api('/api/users');
+  const professors=users.filter(x=>x.role==='professor');
+  const option=(v,text)=>'<option value="'+v+'">'+esc(text)+'</option>';
+  const form='<div class="form-grid" id="acad-overview-filters">'+
+   '<label>학년도<input type="number" id="acad-year" value="2026" min="2020" max="2100"></label>'+
+   '<label>학기<select id="acad-term"><option value="">전체 학기</option>'+
+    option('1','1학기')+option('2','2학기')+'</select></label>'+
+   '<label>기수<input id="acad-cohort" placeholder="전체 기수"></label>'+
+   '<label>보고 대상 월<input type="month" id="acad-month"></label>'+
+   '<label>담당 교수<select id="acad-prof"><option value="">전체 교수</option>'+
+    professors.map(x=>option(x.id,x.name)).join('')+'</select></label>'+
+   '<label>6P 근거 단계<select id="acad-phase"><option value="all">전체 단계</option>'+
+    ['P1','P2','P3','P4','P5','P6'].map(x=>option(x,x)).join('')+'</select></label>'+
+   '<label>보고서 상태<select id="acad-status">'+
+    [['all','전체'],['not_submitted','미제출'],['draft','임시저장'],
+     ['submitted','교수 검토 중'],['revision','보완 요청'],
+     ['department_review','부서 심사 중']].map(([a,b])=>option(a,b)).join('')+
+    '</select></label></div>'+
+    '<div class="inline-btns"><button type="button" class="btn primary" id="acad-overview-search">조건 조회</button>'+
+    '<button type="button" class="btn" id="acad-overview-download">현재 조회 결과 CSV 추출</button></div>'+
+    '<p class="sub">미제출은 선택 보고 월에 기록이 없는 학생입니다. 교수 확인·부서 실적 인정은 별도 상태로 구분합니다.</p>'+
+    '<div id="acad-overview-result">조회 조건을 선택하세요.</div>';
+  if(document.querySelector('#modal')?.open)document.querySelector('#modal').close();
+  openModal('담당 부서 현황 · 조회/추출',form);
+  const container=document.querySelector('#modal-body');
+  const find=id=>container.querySelector('#'+id);
+  const query=()=>{
+   const params=new URLSearchParams();
+   for(const [id,key] of [['acad-year','year'],['acad-term','term'],['acad-cohort','cohort'],
+    ['acad-month','month'],['acad-prof','professor_id'],['acad-phase','phase'],['acad-status','status']]){
+    const value=find(id)?.value?.trim();
+    if(value&&!(key==='phase'&&value==='all')&&!(key==='status'&&value==='all'))
+     params.set(key,value);
+   }
+   return params.toString();
+  };
+  const run=async()=>{
+   try{
+    const result=await api('/api/academic-admin-overview?'+query());
+    find('acad-overview-result').innerHTML=panel('조회 결과 · '+result.count+'명',
+     table(['학생','학기·기수','보고 대상 월','보고서','멘토 / 지도','인정·미연계','6P 및 상세'],
+      result.items.map(row=>[
+       esc(row.name)+'<br><span class="micro">'+esc(row.username)+' · '+esc(row.department)+'</span>',
+       row.year+'/'+row.term+' · '+esc(row.cohort),
+       esc(row.report_month||'없음'),esc(row.report_status),
+       esc(row.mentor_review)+' / '+esc(row.advisor_review),
+       row.recognized+'건 / '+row.unmapped+'건',
+       '<button class="link" onclick="app.monthlyProgress('+row.id+')">6P·MIRAE 근거 보기</button>'
+      ]),'조건에 해당하는 학생이 없습니다.'));
+   }catch(e){toast('현황 조회 실패: '+e.message);}
+  };
+  find('acad-overview-search').addEventListener('click',run);
+  find('acad-overview-download').addEventListener('click',async()=>{
+   try{
+    const base=window.STUDENT_API_BASE||'',url=base+'/api/academic-admin-export.csv?'+query();
+    const res=await fetch(url,{credentials:base?'include':'same-origin'});
+    if(!res.ok)throw Error('조회 조건 확인 필요 ('+res.status+')');
+    const blob=await res.blob(),objectUrl=URL.createObjectURL(blob),a=document.createElement('a');
+    a.href=objectUrl;a.download='student-department-overview.csv';document.body.append(a);a.click();a.remove();
+    setTimeout(()=>URL.revokeObjectURL(objectUrl),1000);
+    toast('현재 조건의 전체 부서 현황 CSV 저장');
+   }catch(e){toast('추출 실패: '+e.message);}
+  });
+  await run();
+ }
  async function monthlyChooseStudent(){
   const {items}=await api('/api/users');
   const students=items.filter(x=>x.role==='student');
@@ -376,5 +443,5 @@ export function makeMonthlyUI(h){
  }
  return {page,actions:{newMonthlyActivity,newMonthlyReport,editMonthlyReport,submitMonthlyReport,
   reviewMonthlyReport,monthlyDetail,monthlyRecognition,monthlyProgress,monthlyExportProgress,
-  monthlyChooseStudent,monthlyEditProfile,monthlyEditCriteria,monthlyMapActivity,monthlyDecideStage,monthlyAssignReviewers}};
+  monthlyChooseStudent,monthlyAdminOverview,monthlyEditProfile,monthlyEditCriteria,monthlyMapActivity,monthlyDecideStage,monthlyAssignReviewers}};
 }
