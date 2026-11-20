@@ -54,23 +54,51 @@ export function disposeCharts(root=document){
   chart.dispose();charts.delete(id);
  }
 }
-export function renderHorizontal(id,items,{unit='건',mode='count'}={}){
- const data=items.map(i=>Number(i.value)||0),max=Math.max(1,...data);
- return mount(id,{
-  grid:{top:9,bottom:20,left:12,right:48,containLabel:true},
-  xAxis:{type:'value',min:0,minInterval:1,max:mode==='percent'?100:Math.max(1,Math.ceil(max*1.13)),
-   splitLine:{lineStyle:{color:'#E9EEF4'}},axisLabel:{color:'#8190A3'}},
-  yAxis:{type:'category',inverse:true,data:items.map(i=>i.label),axisLabel:{color:'#3C536C',width:170,overflow:'truncate',fontSize:11},axisLine:{show:false},axisTick:{show:false}},
-  tooltip:{trigger:'axis',axisPointer:{type:'shadow'},renderMode:'richText',valueFormatter:v=>v+unit},
-  series:[{type:'bar',barMaxWidth:23,data,showBackground:true,backgroundStyle:{color:'#EEF2F6',borderRadius:4},
-   itemStyle:{color:COLORS.blue,borderRadius:[0,5,5,0]},
-   label:{show:true,position:'right',color:'#223850',fontWeight:'bold',formatter:p=>p.value+unit}}],
- },'영역별 인정 건수');
+// Honest no-data SVG. An empty metric is not a 100%-filled gray bar.
+export function renderEmptyMetric(id,{title='인정 실적 없음',detail='부서 인정 후 그래프가 표시됩니다.'}={}){
+ return mount(id,{graphic:[
+  {type:'rect',left:'7%',top:'13%',shape:{width:1,height:1},style:{fill:'transparent'}},
+  {type:'text',left:'center',top:'36%',style:{text:title,fill:'#344d68',font:'700 22px Pretendard, system-ui',textAlign:'center'}},
+  {type:'text',left:'center',top:'53%',style:{text:detail,fill:'#758aa0',font:'12px Pretendard, system-ui',textAlign:'center'}}],
+  xAxis:{show:false},yAxis:{show:false},series:[]},title);
 }
-export function renderPhaseProgress(id,stages){
+export function renderHorizontal(id,items,{unit='건',mode='count',onSelect}={}){
+ const data=items.map(i=>Number(i.value)||0);
+ if(data.every(v=>v<=0))return renderEmptyMetric(id);
+ const max=Math.max(1,...data);
+ const option={
+  grid:{top:12,bottom:22,left:12,right:64,containLabel:true},
+  xAxis:{type:'value',min:0,minInterval:1,max:mode==='percent'?100:Math.max(1,Math.ceil(max*1.14)),
+   splitLine:{lineStyle:{color:'#ecf1f6',type:'dashed'}},axisLabel:{color:'#91a0b1'}},
+  yAxis:{type:'category',inverse:true,data:items.map(i=>i.label),
+   axisLabel:{color:'#3b5571',width:180,overflow:'truncate',fontSize:12,fontWeight:600},
+   axisLine:{show:false},axisTick:{show:false}},
+  tooltip:{trigger:'axis',axisPointer:{type:'shadow'},renderMode:'richText',
+   valueFormatter:v=>v+unit},
+  series:[{
+   name:'부서 인정',type:'bar',barWidth:19,data,
+   itemStyle:{borderRadius:[0,10,10,0],color:p=>new window.echarts.graphic.LinearGradient(0,0,1,0,[
+    {offset:0,color:SERIES[p.dataIndex%5]},{offset:1,color:['#73BFC2','#91ACD7','#E9BC80','#B6A0D7','#ECA3A8'][p.dataIndex%5]}])},
+   emphasis:{focus:'series'},label:{show:true,position:'right',distance:9,color:'#253950',
+    fontSize:13,fontWeight:700,formatter:p=>p.value+unit}
+  },{
+   name:'인정 활동',type:'scatter',symbolSize:14,silent:true,z:3,
+   data:items.map((item,i)=>[data[i],item.label]),
+   itemStyle:{color:'#fff',borderColor:COLORS.teal,borderWidth:3}
+  }]
+ };
+ const mounted=mount(id,option,'영역별 인정 건수');
+ if(mounted&&typeof onSelect==='function'){
+  const chart=charts.get(id);
+  chart.on('click',e=>{const index=e.dataIndex;if(Number.isInteger(index)&&items[index])onSelect(items[index]);});
+ }
+ return mounted;
+}
+export function renderPhaseProgress(id,stages,{onSelect}={}){
  const names=stages.map(x=>x.phase),accepted=stages.map(x=>x.recognized),
   missing=stages.map(x=>x.missing);
- return mount(id,{
+ if(accepted.every(v=>!v)&&missing.every(v=>!v))return renderEmptyMetric(id);
+ const mounted=mount(id,{
   legend:{top:0,right:12,data:['인정','부족'],textStyle:{fontSize:11,color:'#5A6D83'}},
   grid:{left:30,right:30,top:48,bottom:18,containLabel:true},
   xAxis:{type:'value',min:0,minInterval:1,splitLine:{lineStyle:{color:'#E8EEF4'}}},
@@ -82,9 +110,18 @@ export function renderPhaseProgress(id,stages){
    {name:'부족',type:'bar',stack:'required',barMaxWidth:25,data:missing,itemStyle:{color:COLORS.amber,borderRadius:[0,4,4,0]},label:{show:true,position:'inside',color:'#263A4F',formatter:p=>p.value?p.value:''}}
   ]
  },'6P 이수 인정·부족 현황');
+ if(mounted&&typeof onSelect==='function'){
+  charts.get(id).on('click',e=>{
+   const row=stages[e.dataIndex];
+   if(row)onSelect(row);
+  });
+ }
+ return mounted;
 }
 export function renderMiraeTrend(id,periods,competencies){
  const names=periods.map(x=>x.label);
+ if(!periods.length||periods.every(p=>competencies.every(c=>!(Number(p.competencies?.[c.code])>0))))
+  return renderEmptyMetric(id,{title:'선택 기간 실적 없음',detail:'월·학기별 인정 활동이 등록되면 추이가 표시됩니다.'});
  return mount(id,{
   legend:{type:'scroll',top:5,left:9,itemWidth:10,itemHeight:10,textStyle:{fontSize:11}},
   grid:{top:52,bottom:48,left:42,right:18},
@@ -96,8 +133,39 @@ export function renderMiraeTrend(id,periods,competencies){
   series:competencies.map((c,i)=>({
    name:c.label||c.code,type:'line',smooth:0.16,showSymbol:periods.length<=12,
    symbolSize:6,lineStyle:{width:2.5},emphasis:{focus:'series'},
-   areaStyle:{opacity:0.035},data:periods.map(x=>Number(x.competencies[c.code])||0)}))
+   areaStyle:{opacity:0.09},data:periods.map(x=>Number(x.competencies[c.code])||0)}))
  },'기간별 MIRAE 인정 실적');
+}
+export function renderPeriodHeatmap(id,periods,competencies,{onSelect}={}){
+ if(!periods.length||!periods.some(p=>competencies.some(c=>Number(p.competencies?.[c.code])>0)))
+  return renderEmptyMetric(id,{title:'기간별 실적 없음',detail:'인정 활동이 발생한 기간에 분포가 표시됩니다.'});
+ const codes=competencies.map(c=>c.code),labels=periods.map(p=>p.label);
+ const values=[];
+ for(let y=0;y<codes.length;y++)for(let x=0;x<periods.length;x++)
+  values.push([x,y,Number(periods[x].competencies[codes[y]])||0]);
+ const max=Math.max(1,...values.map(x=>x[2]));
+ const mounted=mount(id,{
+  grid:{left:132,right:23,top:18,bottom:72,containLabel:false},
+  tooltip:{trigger:'item',renderMode:'richText',
+   formatter:p=>labels[p.value[0]]+' · '+competencies[p.value[1]].label+' · '+p.value[2]+'건'},
+  xAxis:{type:'category',data:labels,axisTick:{show:false},axisLine:{show:false},
+   axisLabel:{fontSize:10,color:'#65798E',rotate:labels.length>=9?32:0,hideOverlap:true}},
+  yAxis:{type:'category',inverse:true,data:competencies.map(c=>c.code+' · '+c.label),
+   axisLine:{show:false},axisTick:{show:false},axisLabel:{color:'#344B67',fontWeight:600,width:115,overflow:'truncate'}},
+  visualMap:{min:0,max,dimension:2,orient:'horizontal',left:'center',bottom:4,itemWidth:14,itemHeight:102,
+   text:['많음','없음'],textGap:9,calculable:false,textStyle:{color:'#65798E',fontSize:10},
+   inRange:{color:['#F1F6F9','#B3DBDA','#63B6AA','#226D85']}},
+  series:[{name:'기간별 인정',type:'heatmap',data:values,progressive:0,
+   label:{show:periods.length<=10,formatter:p=>p.value[2]||'',color:'#173D52',fontSize:10},
+   itemStyle:{borderWidth:3,borderColor:'#fff',borderRadius:7},
+   emphasis:{itemStyle:{borderColor:'#173D52',borderWidth:2}}}]
+ },'MIRAE 영역별 기간 히트맵');
+ if(mounted&&typeof onSelect==='function')
+  charts.get(id).on('click',e=>{
+   const row=e.value;
+   if(Array.isArray(row))onSelect({code:codes[row[1]],period:periods[row[0]]});
+  });
+ return mounted;
 }
 export function renderPlanStatus(id,counts){
  const names=[['approved','승인 완료'],['submitted','검토 대기'],['revision','보완 요청'],
