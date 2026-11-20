@@ -1,0 +1,31 @@
+name: W01 probe portless Pages virtual-host without touching DNS
+on:
+  push:
+    branches: [main]
+    paths: [.github/workflows/probe-pages-domain.yml]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - name: Check whether GitHub Pages accepts student.suaveforge.com before DNS cutover
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          ip=$(getent ahostsv4 suaveforge.github.io | awk 'NR==1{print $1}')
+          test -n "$ip"
+          echo GITHUB_PAGES_PUBLIC_EDGE_RESOLVED=PASS
+          echo 'Probing candidate host via GitHub Pages IP, not current student DNS.'
+          code=$(curl --insecure --silent --show-error --max-time 15             --resolve "student.suaveforge.com:443:$ip"             -o /tmp/pages-student-index.html -w '%{http_code}'             https://student.suaveforge.com/)
+          echo "GITHUB_PAGES_VHOST_HTTP=$code"
+          test "$code" = 200
+          grep -q 'MIRAE Pathways' /tmp/pages-student-index.html
+          echo GITHUB_PAGES_PORTLESS_VHOST=PASS
+          if curl --fail --silent --show-error --max-time 12             --resolve "student.suaveforge.com:443:$ip"             https://student.suaveforge.com/ -o /dev/null; then
+            echo GITHUB_PAGES_CUSTOM_CERT_TRUSTED=PASS
+          else
+            echo GITHUB_PAGES_CUSTOM_CERT_TRUSTED=NOT_READY
+          fi
