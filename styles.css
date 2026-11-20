@@ -4,3 +4,30 @@
 dialog.academic-viz{width:min(1020px,calc(100vw - 32px));max-width:calc(100vw - 24px)}
 dialog.academic-viz #modal-body{max-height:76vh}
 @media(max-width:740px){dialog.academic-viz{width:calc(100vw - 24px)}dialog.academic-viz #modal-body{padding:10px 19px 24px}}
+
+/* Research / Charts: shared production data visualization presentation. */
+.research-chart{width:100%;height:285px;min-height:220px;position:relative;overflow:hidden}
+.research-chart.chart-status{height:232px}
+.research-chart.chart-bars{height:270px}
+.research-chart.chart-trend{height:340px}
+.research-chart.chart-review{height:245px}
+.research-chart.chart-matrix{height:290px}
+.research-chart.chart-student-matrix{min-height:250px}
+.research-chart-card{background:#fff;border:1px solid #DEE7EF;border-radius:12px;padding:17px 17px 8px;margin-bottom:13px;min-width:0}
+.research-chart-card h3{font-size:14px;font-weight:760;letter-spacing:-.3px;margin:0 0 9px;color:#263C54}
+.research-chart-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px}
+.research-chart-grid .research-chart-card{margin-bottom:0}
+.research-chart .chart-fallback{color:#687C90;font-size:12px;text-align:center;padding:75px 15px}
+.research-chart-card+.research-chart-card{margin-top:12px}
+.research-chart-grid .research-chart-card+.research-chart-card{margin-top:0}
+.period-count{padding:3px 0;font-size:11px;color:#687C91}
+.period-count b{font-weight:750;color:#2C5778}
+.chart-note{font-size:11px;color:#718399;margin:0 0 12px}
+@media(max-width:740px){
+ .research-chart-grid{grid-template-columns:1fr;gap:10px}
+ .research-chart-card{padding:14px 9px 8px}
+ .research-chart.chart-status{height:230px}
+ .research-chart.chart-bars{height:250px}
+ .research-chart.chart-trend{height:310px}
+ .research-chart.chart-matrix{height:280px}
+}
