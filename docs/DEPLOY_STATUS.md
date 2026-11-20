@@ -73,3 +73,11 @@ Source workflow deploy-student-server123.yml owns application release. If build 
 - MP4 `recording-10.mp4` FFprobe **H.264 1440×900 15 FPS, duration 58.067s, size 2,508,650 bytes** PASS. 아티팩트 [14606346942](https://github.com/suaveforge/student/actions/runs/44685787716/artifacts/14606346942) / GitHub 보존기한 **2026-12-04 UTC**. 실제 다운로드 파일을 ffprobe로 재확인하고 프레임 캡처 육안 점검: **Chrome 주소창, 탭, 실제 X11 커서와 학생·관리자 UI 표시 확인**. 주의: 영상에는 현재 Chrome 창 바깥 검은 데스크톱 여백이 있으므로 최고 품질 완성 단계에서 화면 맞춤 개선 가능. 이 시각적 문제는 기능·녹화 검증 성공과 구분한다.
 - 기존 `student.suaveforge.com:19443`는 최종 URL이 아니며 오래된 영상의 완료 마커를 새 검증 증거로 재사용하지 않음.
 - **여전히 별도 범위 미완료**: G2B 원본 과업 첨부 문서 확보·항목별 대조, 부서 인정·6P/MIRAE 및 데이터 이관 세부 요구 완전 구현 여부, 실제 iOS/Android 디바이스 검증, 공개 가상 계정 보호정책, Chrome 녹화 화면 검은 여백 최소화 및 번역 팝업 억제. 이 사항들을 W01 전체 완료로 오인하지 않는다.
+
+
+## 2026-11-20 latest Student portless full-screen recording QA
+
+- Trusted `https://student.suaveforge.com` remains the canonical no-port browser URL; GitHub Pages frontend + isolated Node/SQLite `:19444` API under independent Nginx. No Caddy or common 443 changes.
+- Current Student backend deployment [44688097841](https://github.com/suaveforge/student/actions/runs/44688097841) **SUCCESS** after fixing interrupted recording recovery and real X11 Chrome maximization/cursor offset. Source SQLite restart regression tests [44687571884](https://github.com/suaveforge/student/actions/runs/44687571884) PASS 3/3.
+- Real server123 Chrome 13-step run [44688193745](https://github.com/suaveforge/student/actions/runs/44688193745) **SUCCESS**. Video artifact [14607347819](https://github.com/suaveforge/student/actions/runs/44688193745/artifacts/14607347819), **61.267s H.264 1440×900**, genuine Chrome address/tab/OS cursor. Frames directly reviewed: full viewport, no black side margins or translation popup. Prior failed attempts were marked failed and superseded, not erased.
+- Unverified original procurement document and full acceptance gaps remain in source `docs/MVP_MASTER_STATUS.md`. No unrelated services changed.
