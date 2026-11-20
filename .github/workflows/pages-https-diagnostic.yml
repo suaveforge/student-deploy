@@ -4,6 +4,7 @@ on:
     branches: [main]
     paths:
       - .github/workflows/pages-https-diagnostic.yml
+      - CNAME
   workflow_dispatch:
 permissions:
   contents: read
