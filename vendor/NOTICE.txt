@@ -1,0 +1,10 @@
+Apache ECharts 5.6.0
+Copyright (c) Apache Software Foundation
+License: Apache License, Version 2.0
+https://github.com/apache/echarts/blob/5.6.0/LICENSE
+Source: https://github.com/apache/echarts/tree/5.6.0
+Distributed artifact: dist/echarts.min.js
+The unmodified minified vendor artifact retains its Apache license header.
+
+The Student platform's original visualization integration lives in
+public/charts-ui.js. This directory does not contain student data or secrets.

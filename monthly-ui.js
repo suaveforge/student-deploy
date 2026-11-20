@@ -1,3 +1,4 @@
+import {loadECharts,renderHorizontal,renderPhaseProgress,renderMiraeTrend,renderReviewStack,renderPhaseHeatmap,renderMiraeMatrix,disposeCharts} from './charts-ui.js';
 // W01 RFP #4–#7: operational proof UI on the existing signed-in workspace.
 // Official university semester exceptions and MIRAE weighted standards remain unconfigured.
 export function makeMonthlyUI(h){
@@ -41,9 +42,9 @@ export function makeMonthlyUI(h){
    return [rowHead(x),'<span class="pill '+esc(x.status)+'">'+esc(status[x.status]||x.status)+'</span>',
      esc(review),'<span class="micro">'+x.activities.length+'건 연결</span>',buttons];
   });
-  let html=pageHead('MONTHLY REVIEWS','월별 보고서 · 교수 확인 · 부서 인정',intro,actions)+
+  let html=pageHead('월별 보고서','월별 보고서 · 교수 확인 · 부서 인정',intro,actions)+
    panel('보고서 상태',table(['대상 월 · 학생','보고서 상태','두 교수 확인','연결 실적','업무'],
-    rows,'등록된 월별 보고서가 없습니다.'),'원본 과업 4 · 기존 활동계획 승인과 별도');
+    rows,'등록된 월별 보고서가 없습니다.'),'교수 2명 확인 후 부서 심사');
   if(student){
    const a=(await api('/api/monthly-activities')).items;
    html+=panel('내 활동·성과 신청',table(['활동명','유형','일자','인정상태'],
@@ -75,7 +76,25 @@ export function makeMonthlyUI(h){
   html+=panel('최종 연구결과보고서',
    finalActions+table(['보고서','상태','제출 차수','교수별 확인','업무'],finalRows,'최종 연구결과보고서가 없습니다.'),
    '수행내용·성과·향후 계획을 제출하고 이전 제출본 및 교수별 확인 이력을 보존합니다.');
+  let reviewData=[];
+  if(!student){
+   const map=new Map();
+   for(const report of items){
+    for(const reviewer of report.reviewers||[]){
+     if(role==='professor'&&reviewer.professor_id!==state.user.id)continue;
+     const key=reviewer.professor_id+'-'+reviewer.role;
+     if(!map.has(key))map.set(key,{name:reviewer.professor+' · '+(reviewer.role==='mentor'?'멘토':'지도'),confirmed:0,pending:0,revision:0});
+     const cell=map.get(key),status=reviewer.decision;
+     cell[status==='confirmed'?'confirmed':status==='revision'?'revision':'pending']++;
+    }
+   }
+   reviewData=[...map.values()];
+   if(reviewData.length)html+=panel('교수별 월별 보고서 확인 현황',
+    '<div id="monthly-review-chart" class="research-chart chart-review" role="img" aria-label="교수별 확인·미확인·보완 요청 건수"></div>',
+    '현재 조회된 월별 보고서의 교수별 확인 건수');
+  }
   document.querySelector('#main').innerHTML=html;
+  if(reviewData.length){await loadECharts();renderReviewStack('monthly-review-chart',reviewData)}
  }
  function findReport(id){return cache.find(x=>x.id===Number(id));}
  function activityFields(rows,selected=[]){
@@ -99,7 +118,7 @@ export function makeMonthlyUI(h){
    '<label class="full">향후 계획<textarea name="future_plan" maxlength="3000" required>'+esc(row.future_plan||'')+
     '</textarea></label></div>'+
    activityFields(activities,row.activities?.map(a=>a.id)||[])+
-   '<p class="micro">교수 확인·부서 인정 이후에는 일반 수정이 차단됩니다. 공식 원본 서식의 나머지 세부 항목은 별도 구현 대상입니다.</p>'+
+   '<p class="micro">교수 확인 후에는 일반 수정이 제한됩니다. 학교 확정 서식과 추가 대조가 필요합니다.</p>'+
    formActions;
  }
  async function newMonthlyActivity(){
@@ -254,7 +273,7 @@ export function makeMonthlyUI(h){
     async f=>{
      await api('/api/monthly-reports/'+rid+'/recognitions/'+aid,
       dataBody({decision,reason:f.get('reason')}));
-     toast('실적 처리 및 자동 집계 근거가 갱신됐습니다.');
+     toast('실적 처리 결과를 저장했습니다.');
     });
  }
  async function monthlyProgress(studentId){
@@ -279,12 +298,7 @@ export function makeMonthlyUI(h){
    const mirae=d.competencies.map(c=>{
     const evidence=c.evidence.length?'<details><summary>반영 '+c.recognized+'건</summary>'+
      c.evidence.map(a=>'<div class="micro">'+esc(a.activity_day)+' · #'+a.id+' '+esc(a.title)+'</div>').join('')+'</details>':'—';
-    const monthly=c.monthly.map(item=>{
-     const width=Math.min(100,Math.round(100*item.count/Math.max(1,c.recognized)));
-     return '<div style="display:flex;gap:6px;align-items:center;min-width:150px">'+
-      '<small>'+esc(item.month)+'</small><span style="height:7px;min-width:3px;background:#3d8fa3;width:'+width+'%;border-radius:6px"></span>'+
-      '<small>'+item.count+'건</small></div>';
-    }).join('')||'—';
+    const monthly=c.monthly.map(item=>'<div class="period-count">'+esc(item.month)+' · <b>'+item.count+'건</b></div>').join('')||'—';
     return [esc(c.code+' · '+c.label),c.required===null?'기준 미확정':c.required+'건',
      c.recognized+'건',c.status==='criteria_unset'?'기준 미확정':c.status==='satisfied'?'기준 충족':'부족',
      evidence,monthly];
@@ -297,8 +311,9 @@ export function makeMonthlyUI(h){
      '<button class="btn" onclick="app.monthlyEditCriteria()">6P·MIRAE 기준 관리</button>':'')+'</div>';
    openModal('6P·MIRAE 인정 실적 · 학생 '+studentId,
     '<p class="sub">부서 인정 완료 실적과 부서 지정 P단계만 집계합니다. 학생이 제안한 P단계는 최종 인정이 아닙니다.'+
-    ' MIRAE는 기준이 없으면 점수·가중치를 만들지 않습니다.</p>'+toolbar+
+    ' MIRAE 공식 기준 미확정 항목은 수치로 환산하지 않습니다.</p>'+toolbar+
     panel('6P 단계별 기본 충족·부서 확정',table(['단계','요구/인정/부족','인정 근거','부서 최종 상태'],requirements))+
+    panel('월별 MIRAE 인정 분포','<div id="mirae-period-matrix" class="research-chart chart-matrix" role="img" aria-label="MIRAE 영역별 월별 실적 분포"></div>','현재 부서 인정 완료 실적 기준')+
     panel('MIRAE 5개 역량 · 인정 근거·기간별 변화',table(['역량','요구','인정','충족','근거','월별 분포'],mirae))+
     '<p class="sub">P1: '+esc(d.P1.status)+' · P2: '+esc(d.P2.status)+
     ' · P1 연구실: '+esc(d.profile.research_lab||'미등록')+
@@ -316,51 +331,18 @@ export function makeMonthlyUI(h){
      '건. 증빙 확인과 부서 결정 없이는 자동 달성 처리하지 않습니다.</p>':'')+
     (d.unmapped_activities.length?'<p class="sub">P단계 또는 MIRAE 미연계 인정 실적 '+
      d.unmapped_activities.length+'건 · 관리자가 개별 근거를 지정해야 집계됩니다.</p>':''));
+   await loadECharts();
+   renderMiraeMatrix('mirae-period-matrix',d.competencies);
   }catch(e){toast('조회 실패: '+e.message);}
  }
 
- function academicBarChart(values,title){
-  const max=Math.max(1,...values.map(v=>v.value));
-  const items=values.map(x=>{
-   const width=Math.round(x.value/max*100);
-   return '<div style="display:grid;grid-template-columns:minmax(80px,110px) 1fr 46px;gap:10px;align-items:center;margin:9px 0">'+
-    '<span class="micro">'+esc(x.label)+'</span>'+
-    '<div style="height:18px;background:#e9eff3;border-radius:5px;overflow:hidden">'+
-     '<div style="width:'+width+'%;height:18px;background:#316e9a;border-radius:5px"></div></div>'+
-    '<b style="font-size:12px;text-align:right">'+x.value+'건</b></div>';
-  }).join('');
-  return '<section style="border:1px solid #dfe6ed;padding:14px;border-radius:9px;min-width:0">'+
-   '<h3 style="margin:0 0 12px">'+esc(title)+'</h3>'+items+'</section>';
- }
- function academicLineChart(rows,codes){
-  const w=860,h=290,left=48,right=20,top=40,bottom=62;
-  const plotW=w-left-right,plotH=h-top-bottom;
-  const max=Math.max(1,...rows.flatMap(row=>codes.map(k=>row.competencies[k]||0)));
-  const xs=i=>left+(rows.length===1?plotW/2:i*plotW/(rows.length-1));
-  const ys=n=>top+plotH-n/max*plotH;
-  const colors=['#226d9c','#c96e30','#16846c','#8657a3','#cb5274'];
-  const grid=[0,1,2,3,4].map(n=>{
-   const value=Math.round(max*n/4),y=ys(value);
-   return '<line x1="'+left+'" y1="'+y+'" x2="'+(w-right)+'" y2="'+y+'" stroke="#d8e3ed"/>'+
-    '<text x="'+(left-8)+'" y="'+(y+4)+'" text-anchor="end" font-size="11">'+value+'</text>';
-  }).join('');
-  const plotted=codes.map((code,i)=>{
-   const pts=rows.map((row,j)=>xs(j)+','+ys(row.competencies[code]||0)).join(' ');
-   return '<polyline points="'+pts+'" fill="none" stroke="'+colors[i]+'" stroke-width="3" stroke-linejoin="round"/>'+
-    rows.map((row,j)=>'<circle cx="'+xs(j)+'" cy="'+ys(row.competencies[code]||0)+'" r="3.3" fill="'+colors[i]+'"/>').join('');
-  }).join('');
-  const step=Math.max(1,Math.ceil(rows.length/9));
-  const tick=rows.map((row,j)=>j%step===0||j===rows.length-1?
-   '<text x="'+xs(j)+'" y="'+(h-35)+'" font-size="10" text-anchor="middle">'+esc(row.label)+'</text>':'').join('');
-  const legend=codes.map((code,i)=>'<circle cx="'+(58+i*148)+'" cy="17" r="5" fill="'+colors[i]+'"/>'+
-   '<text x="'+(69+i*148)+'" y="21" font-size="12">'+esc(code)+'</text>').join('');
-  return '<svg viewBox="0 0 '+w+' '+h+'" role="img" aria-label="MIRAE 기간별 변화 비교" '+
-   'style="width:100%;max-width:100%;min-height:170px">'+legend+grid+plotted+tick+'</svg>';
- }
  async function monthlyVisualize(studentId){
   const origin=window.STUDENT_API_BASE||'';
   const base='/api/academic-visualization/'+studentId;
   const initial=await api(base);
+  // Official 6P requirements are student-specific. Department totals have
+  // different cohorts; do not aggregate incompatible requirement thresholds.
+  const progress=studentId==='department'?null:await api('/api/academic-progress/'+studentId);
   if(document.querySelector('#modal')?.open)document.querySelector('#modal').close();
   openModal('MIRAE·6P 현재 분포 · 학기/기간 비교 · 인쇄',
    '<div class="form-grid" id="acad-viz-filters">'+
@@ -370,7 +352,7 @@ export function makeMonthlyUI(h){
      '<option value="semester">학기별</option></select></label></div>'+
    '<div class="inline-btns"><button class="btn primary" id="acad-viz-apply" type="button">기간 비교</button>'+
     '<a class="btn" id="acad-viz-print" target="_blank" rel="noopener noreferrer">그래프·도표 인쇄/PDF</a></div>'+
-   '<div id="acad-viz-output">조회 중...</div>');
+   '<div id="acad-viz-output" aria-live="polite">조회 중...</div>');
   document.querySelector('#modal').classList.add('academic-viz');
   const container=document.querySelector('#modal-body');
   const f=id=>container.querySelector('#'+id);
@@ -380,7 +362,7 @@ export function makeMonthlyUI(h){
    try{
     const p=params();
     const data=await api(base+'?'+p.toString());
-    const phases=data.phase_codes.map(k=>({label:k,value:data.current.phases[k]}));
+    const phases=data.phase_codes.filter(k=>['P3','P4','P5','P6'].includes(k)).map(k=>({label:k,value:data.current.phases[k]}));
     const competences=data.competencies.map(k=>({
      label:k.code+' · '+k.label,value:data.current.competencies[k.code]}));
     const keys=data.competencies.map(c=>c.code);
@@ -390,19 +372,34 @@ export function makeMonthlyUI(h){
      ...data.phase_codes.map(k=>period.phases[k]+'건')
     ]);
     f('acad-viz-print').href=origin+base+'/print?'+p.toString();
+    disposeCharts(f('acad-viz-output'));
     f('acad-viz-output').innerHTML=
      '<p class="sub">현재 부서 인정 활동 '+data.current.unique_activities+'건 / 선택 기간 인정 활동 '+
-      data.selected_period.unique_activities+'건. 여러 역량에 중복 연계된 1개 활동은 역량별 각각 집계됩니다.</p>'+
-     '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px">'+
-      academicBarChart(competences,'현재 MIRAE 5개 영역 분포')+
-      academicBarChart(phases,'현재 6P 단계별 인정 실적')+'</div>'+
-     '<section style="border:1px solid #dfe6ed;border-radius:9px;padding:14px;margin-top:14px">'+
-      '<h3>선택 기간의 '+(data.filters.group_by==='month'?'월별':'학기별')+' MIRAE 인정 건수 추이</h3>'+
-      academicLineChart(data.series,keys)+'</section>'+
+      data.selected_period.unique_activities+'건. 여러 역량에 중복 연계된 활동은 영역별로 각각 집계됩니다.</p>'+
+     '<div class="research-chart-grid">'+
+      '<section class="research-chart-card"><h3>현재 MIRAE 5개 영역 분포</h3>'+
+       '<div id="acad-mirae-bars" class="research-chart chart-bars" role="img" aria-label="MIRAE 영역별 인정 건수"></div></section>'+
+      '<section class="research-chart-card"><h3>현재 6P 단계별 인정 실적</h3>'+
+       '<p class="chart-note">P3~P6 인정 실적 · P1·P2는 배치·계획 증빙으로 별도 판정</p>'+
+       '<div id="acad-phase-bars" class="research-chart chart-bars" role="img" aria-label="단계별 인정 건수와 부족 현황"></div></section>'+
+     '</div>'+
+     '<section class="research-chart-card"><h3>선택 기간의 '+(data.filters.group_by==='month'?'월별':'학기별')+
+      ' MIRAE 인정 건수 추이</h3><div id="acad-trend" class="research-chart chart-trend" role="img" aria-label="MIRAE 영역별 기간 비교 추이"></div></section>'+
      panel('기간별 MIRAE·6P 비교 도표',
       table(['기간','인정 활동',...data.competencies.map(x=>x.code),
        ...data.phase_codes],tabular))+
      '<p class="micro">'+data.notes.map(esc).join(' ')+'</p>';
+    await loadECharts();
+    // Graph-only UI; canonical counts, semester boundaries and print access
+    // remain unchanged in the existing role-scoped academic APIs.
+    renderHorizontal('acad-mirae-bars',competences);
+    if(progress){
+     const stages=progress.stages.filter(x=>['P3','P4','P5','P6'].includes(x.phase)).map(x=>({
+      phase:x.phase,recognized:Object.values(x.counted).reduce((n,v)=>n+Number(v||0),0),
+      missing:Object.values(x.missing).reduce((n,v)=>n+Number(v||0),0)}));
+     renderPhaseProgress('acad-phase-bars',stages);
+    }else renderHorizontal('acad-phase-bars',phases);
+    renderMiraeTrend('acad-trend',data.series,data.competencies);
    }catch(e){toast('시각화 오류: '+e.message);}
   };
   f('acad-viz-apply').addEventListener('click',render);
@@ -441,7 +438,7 @@ export function makeMonthlyUI(h){
      ['department_review','부서 심사 중']].map(([a,b])=>option(a,b)).join('')+
     '</select></label></div>'+
     '<div class="inline-btns"><button type="button" class="btn primary" id="acad-overview-search">조건 조회</button>'+
-    '<button type="button" class="btn" id="acad-overview-download">현재 조회 결과 CSV 추출</button></div>'+
+    '<button type="button" class="btn" id="acad-overview-download">CSV 다운로드</button></div>'+
     '<p class="sub">미제출은 선택 보고 월에 기록이 없는 학생입니다. 교수 확인·부서 실적 인정은 별도 상태로 구분합니다.</p>'+
     '<div id="acad-overview-result">조회 조건을 선택하세요.</div>';
   if(document.querySelector('#modal')?.open)document.querySelector('#modal').close();
@@ -461,7 +458,10 @@ export function makeMonthlyUI(h){
   const run=async()=>{
    try{
     const result=await api('/api/academic-admin-overview?'+query());
-    find('acad-overview-result').innerHTML=panel('조회 결과 · '+result.count+'명',
+    disposeCharts(find('acad-overview-result'));
+    find('acad-overview-result').innerHTML=(result.items.length?panel('학생별 P3~P6 단계 현황',
+     '<div id="acad-6p-matrix" class="research-chart chart-student-matrix" role="img" aria-label="학생별 P3~P6 단계 이수 상태"></div>',
+     'P1·P2는 연구실 배치와 초기 계획 등 별도 증빙으로 확인합니다.'):'')+panel('조회 결과 · '+result.count+'명',
      table(['학생','학기·기수','보고 대상 월','보고서','멘토 / 지도','인정·미연계','6P 및 상세'],
       result.items.map(row=>[
        esc(row.name)+'<br><span class="micro">'+esc(row.username)+' · '+esc(row.department)+'</span>',
@@ -471,6 +471,7 @@ export function makeMonthlyUI(h){
        row.recognized+'건 / '+row.unmapped+'건',
        '<button class="link" onclick="app.monthlyProgress('+row.id+')">6P·MIRAE 근거 보기</button>'
       ]),'조건에 해당하는 학생이 없습니다.'));
+    if(result.items.length){await loadECharts();renderPhaseHeatmap('acad-6p-matrix',result.items)}
    }catch(e){toast('현황 조회 실패: '+e.message);}
   };
   find('acad-overview-search').addEventListener('click',run);
