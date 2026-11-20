@@ -53,7 +53,7 @@ if ! "$D" -H "$S" run -d --name "$APP" --restart unless-stopped --init \
  --shm-size 1g --cap-drop ALL --security-opt no-new-privileges \
  -p 127.0.0.1:18787:8787 \
  -e HOST=0.0.0.0 -e PORT=8787 -e DBFILE=/app/data/mvp.sqlite \
- -e COOKIE_SECURE=1 -e FRONTEND_ORIGIN=https://student.suaveforge.com -e RECORD_BASE_URL=https://student.suaveforge.com:19443 \
+ -e COOKIE_SECURE=1 -e FRONTEND_ORIGIN=https://student.suaveforge.com -e RECORD_BASE_URL=https://student.suaveforge.com -e RECORD_API_BASE=https://api-student.suaveforge.com:19444 \
  -e RECORDER_PYTHON=/opt/w01-python/bin/python -e CHROME_BIN=/usr/bin/google-chrome-stable \
  -v suaveforge_student_data:/app/data -v suaveforge_student_artifacts:/app/artifacts \
  "suaveforge-student:$REV" >/dev/null; then
