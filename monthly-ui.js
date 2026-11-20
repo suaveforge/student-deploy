@@ -1,4 +1,5 @@
-import {loadECharts,renderHorizontal,renderPhaseProgress,renderMiraeTrend,renderReviewStack,renderPhaseHeatmap,renderMiraeMatrix,disposeCharts} from './charts-ui.js';
+import {loadECharts,renderHorizontal,renderPhaseProgress,renderMiraeTrend,renderPeriodHeatmap,renderReviewStack,renderPhaseHeatmap,renderMiraeMatrix,disposeCharts} from './charts-ui.js';
+import {sampleVisualization} from './academic-showcase.js';
 // W01 RFP #4–#7: operational proof UI on the existing signed-in workspace.
 // Official university semester exceptions and MIRAE weighted standards remain unconfigured.
 export function makeMonthlyUI(h){
@@ -340,69 +341,127 @@ export function makeMonthlyUI(h){
   const origin=window.STUDENT_API_BASE||'';
   const base='/api/academic-visualization/'+studentId;
   const initial=await api(base);
-  // Official 6P requirements are student-specific. Department totals have
-  // different cohorts; do not aggregate incompatible requirement thresholds.
+  // Read-only academic result. The illustrative sample is never posted to DB.
   const progress=studentId==='department'?null:await api('/api/academic-progress/'+studentId);
+  let sample=false;
   if(document.querySelector('#modal')?.open)document.querySelector('#modal').close();
-  openModal('MIRAE·6P 현재 분포 · 학기/기간 비교 · 인쇄',
+  openModal('6P·MIRAE 실적 현황 · 기간 비교',
    '<div class="form-grid" id="acad-viz-filters">'+
     '<label>시작 월<input id="acad-viz-from" type="month" value="'+esc(initial.filters.from)+'"></label>'+
     '<label>종료 월<input id="acad-viz-to" type="month" value="'+esc(initial.filters.to)+'"></label>'+
     '<label>기간 묶음<select id="acad-viz-group"><option value="month">월별</option>'+
      '<option value="semester">학기별</option></select></label></div>'+
-   '<div class="inline-btns"><button class="btn primary" id="acad-viz-apply" type="button">기간 비교</button>'+
-    '<a class="btn" id="acad-viz-print" target="_blank" rel="noopener noreferrer">그래프·도표 인쇄/PDF</a></div>'+
+   '<div class="inline-btns chart-toolbar"><button class="btn primary" id="acad-viz-apply" type="button">기간 비교</button>'+
+    '<button class="btn" id="acad-viz-toggle" type="button" aria-pressed="false">별도 시연 예시 보기</button>'+
+    '<a class="btn" id="acad-viz-print" target="_blank" rel="noopener noreferrer">공식 결과 인쇄/PDF</a></div>'+
    '<div id="acad-viz-output" aria-live="polite">조회 중...</div>');
   document.querySelector('#modal').classList.add('academic-viz');
   const container=document.querySelector('#modal-body');
   const f=id=>container.querySelector('#'+id);
   const params=()=>new URLSearchParams({from:f('acad-viz-from').value,to:f('acad-viz-to').value,
    group_by:f('acad-viz-group').value});
+  const showProof=(data,type,key,period)=>{
+   const root=f('acad-proof-output');
+   if(!root)return;
+   const category=type==='mirae'?'MIRAE '+key:'6P '+key;
+   let rows=(data.evidence||[]).filter(x=>type==='mirae'?
+    (x.mirae_codes||[]).includes(key):x.phase===key);
+   if(period)rows=rows.filter(a=>{
+    const month=a.activity_day.slice(0,7);
+    return month>=period.month_start&&month<=period.month_end;
+   });
+   const label=category+(period?' · '+period.label:'')+' 인정 근거';
+   root.innerHTML='<h4>'+esc(label)+'</h4>'+
+    (rows.length?table(['활동일','학생','활동명','단계','연계 영역'],
+     rows.map(a=>[esc(a.activity_day),esc(a.student_name),esc(a.title),
+      esc(a.phase||'미연계'),esc((a.mirae_codes||[]).join(', ')||'미연계')])):
+     '<p class="chart-proof-empty">해당 조건에 부서 인정 활동이 없습니다.</p>')+
+    (data.sample?'<p class="micro">※ 이 활동들은 가상 시연 예시로 실제 인정 실적이나 증빙이 아닙니다.</p>':
+     '<p class="micro">부서가 인정 처리한 활동만 표시합니다. 상세 제출본은 학생별 월별 보고서에서 확인합니다.</p>');
+  };
   const render=async()=>{
    try{
     const p=params();
-    const data=await api(base+'?'+p.toString());
-    const phases=data.phase_codes.filter(k=>['P3','P4','P5','P6'].includes(k)).map(k=>({label:k,value:data.current.phases[k]}));
+    const actual=await api(base+'?'+p.toString());
+    const data=sample?sampleVisualization(actual):actual;
+    const isEmpty=data.current.unique_activities===0;
+    const phases=data.phase_codes.filter(k=>['P3','P4','P5','P6'].includes(k)).map(k=>({
+     code:k,label:k,value:data.current.phases[k]}));
     const competences=data.competencies.map(k=>({
-     label:k.code+' · '+k.label,value:data.current.competencies[k.code]}));
+     code:k.code,label:k.code+' · '+k.label,value:data.current.competencies[k.code]}));
     const keys=data.competencies.map(c=>c.code);
     const tabular=data.series.map(period=>[
      esc(period.label),period.unique_activities+'건',
      ...keys.map(k=>period.competencies[k]+'건'),
      ...data.phase_codes.map(k=>period.phases[k]+'건')
     ]);
-    f('acad-viz-print').href=origin+base+'/print?'+p.toString();
+    f('acad-viz-toggle').textContent=sample?'공식 집계로 돌아가기':'별도 시연 예시 보기';
+    f('acad-viz-toggle').setAttribute('aria-pressed',String(sample));
+    const print=f('acad-viz-print');
+    if(sample){print.removeAttribute('href');print.setAttribute('aria-disabled','true');
+     print.classList.add('chart-print-disabled');print.title='가상 예시는 공식 인쇄물로 출력하지 않습니다.';}
+    else{print.href=origin+base+'/print?'+p.toString();print.removeAttribute('aria-disabled');
+     print.classList.remove('chart-print-disabled');print.removeAttribute('title');}
     disposeCharts(f('acad-viz-output'));
-    f('acad-viz-output').innerHTML=
-     '<p class="sub">현재 부서 인정 활동 '+data.current.unique_activities+'건 / 선택 기간 인정 활동 '+
-      data.selected_period.unique_activities+'건. 여러 역량에 중복 연계된 활동은 영역별로 각각 집계됩니다.</p>'+
+    const ready=data.readiness||{};
+    const summary=sample?
+     '<div class="chart-sample-warning" role="status"><b>가상 시연 전용 예시</b> · 실제 학생 데이터/부서 공식 인정 아님 · 서버 DB에 저장되지 않음. 4명·8건의 예시로 차트와 탐색 기능을 확인합니다.</div>':
+     '<div class="chart-readiness"><b>공식 인정 실적 '+data.current.unique_activities+'건</b>'+
+      ' · 활동 등록 '+(ready.entered_activities??0)+'건'+
+      ' · 교수 확인 완료 보고서 '+(ready.reviewed_reports??0)+'건'+
+      ' · 부서 인정 처리 '+(ready.recognized_decisions??0)+'건'+
+      (Number(ready.legacy_demo_achievements)>0?
+       '<p>기존 가상 성과 '+ready.legacy_demo_achievements+'건은 공식 이수 실적으로 자동 합산하지 않습니다.</p>':'')+
+     '</div>';
+    const noData=isEmpty?'<div class="chart-empty-summary"><b>부서 인정 실적 없음</b>'+
+     '<p>활동 등록 → 월별 보고서 제출 → 멘토·지도교수 확인 → 부서 인정 → 6P·MIRAE 연계가 이루어지면 그래프가 표시됩니다. 시각화 방법은 위의 ‘별도 시연 예시 보기’에서 확인할 수 있습니다.</p></div>':'';
+    f('acad-viz-output').innerHTML=summary+noData+
+     '<p class="sub">현재 인정 활동 '+data.current.unique_activities+'건 · 선택 기간 '+data.selected_period.unique_activities+
+      '건. 하나의 활동이 여러 MIRAE 영역에 연결될 수 있으므로 영역별 합계를 총 활동 수로 해석하지 않습니다.</p>'+
      '<div class="research-chart-grid">'+
-      '<section class="research-chart-card"><h3>현재 MIRAE 5개 영역 분포</h3>'+
-       '<div id="acad-mirae-bars" class="research-chart chart-bars" role="img" aria-label="MIRAE 영역별 인정 건수"></div></section>'+
-      '<section class="research-chart-card"><h3>현재 6P 단계별 인정 실적</h3>'+
-       '<p class="chart-note">P3~P6 인정 실적 · P1·P2는 배치·계획 증빙으로 별도 판정</p>'+
-       '<div id="acad-phase-bars" class="research-chart chart-bars" role="img" aria-label="단계별 인정 건수와 부족 현황"></div></section>'+
+      '<section class="research-chart-card"><h3>MIRAE 5개 영역 · 인정 활동</h3>'+
+       '<p class="chart-note">영역별 독립 건수 · 막대 또는 아래 영역을 누르면 근거 확인</p>'+
+       '<div id="acad-mirae-bars" class="research-chart chart-bars" role="img" aria-label="MIRAE 영역별 인정 활동"></div></section>'+
+      '<section class="research-chart-card"><h3>6P 단계별 실적</h3>'+
+       '<p class="chart-note">P3~P6 · P1/P2는 연구실 배치·초기 계획 증빙으로 별도 확인</p>'+
+       '<div id="acad-phase-bars" class="research-chart chart-bars" role="img" aria-label="P3~P6 인정 실적"></div></section>'+
      '</div>'+
      '<section class="research-chart-card"><h3>선택 기간의 '+(data.filters.group_by==='month'?'월별':'학기별')+
-      ' MIRAE 인정 건수 추이</h3><div id="acad-trend" class="research-chart chart-trend" role="img" aria-label="MIRAE 영역별 기간 비교 추이"></div></section>'+
+      ' MIRAE 인정 건수 추이</h3><div id="acad-trend" class="research-chart chart-trend" role="img" aria-label="학기별 MIRAE 추이"></div></section>'+
+     '<section class="research-chart-card"><h3>기간 × MIRAE 영역 히트맵</h3>'+
+      '<p class="chart-note">진한 색일수록 인정 활동이 많은 기간입니다. 셀을 선택하면 해당 기간 근거가 표시됩니다.</p>'+
+      '<div id="acad-period-heatmap" class="research-chart chart-period-heatmap" role="img" aria-label="기간별 MIRAE 인정 실적 히트맵"></div></section>'+
+     '<section class="research-chart-card chart-evidence" aria-label="인정 근거 탐색">'+
+      '<h3>인정 근거 확인</h3>'+
+      '<div id="acad-proof-actions" class="chart-proof-actions">'+
+       ['M','I','R','A','E'].map(code=>'<button class="btn" type="button" data-evidence-type="mirae" data-code="'+code+'">'+code+'</button>').join('')+
+       ['P3','P4','P5','P6'].map(code=>'<button class="btn" type="button" data-evidence-type="phase" data-code="'+code+'">'+code+'</button>').join('')+
+      '</div><div id="acad-proof-output" aria-live="polite"><p class="micro">영역·단계·히트맵을 선택하면 해당 인정 활동을 확인할 수 있습니다.</p></div></section>'+
      panel('기간별 MIRAE·6P 비교 도표',
       table(['기간','인정 활동',...data.competencies.map(x=>x.code),
        ...data.phase_codes],tabular))+
      '<p class="micro">'+data.notes.map(esc).join(' ')+'</p>';
+    f('acad-proof-actions').querySelectorAll('[data-evidence-type]').forEach(el=>
+     el.addEventListener('click',()=>showProof(data,el.dataset.evidenceType,el.dataset.code)));
     await loadECharts();
-    // Graph-only UI; canonical counts, semester boundaries and print access
-    // remain unchanged in the existing role-scoped academic APIs.
-    renderHorizontal('acad-mirae-bars',competences);
-    if(progress){
+    renderHorizontal('acad-mirae-bars',competences,
+     {onSelect:item=>showProof(data,'mirae',item.code)});
+    if(progress&&!sample){
      const stages=progress.stages.filter(x=>['P3','P4','P5','P6'].includes(x.phase)).map(x=>({
       phase:x.phase,recognized:Object.values(x.counted).reduce((n,v)=>n+Number(v||0),0),
       missing:Object.values(x.missing).reduce((n,v)=>n+Number(v||0),0)}));
-     renderPhaseProgress('acad-phase-bars',stages);
-    }else renderHorizontal('acad-phase-bars',phases);
+     renderPhaseProgress('acad-phase-bars',stages,
+      {onSelect:item=>showProof(data,'phase',item.phase)});
+    }else renderHorizontal('acad-phase-bars',phases,
+     {onSelect:item=>showProof(data,'phase',item.code)});
     renderMiraeTrend('acad-trend',data.series,data.competencies);
+    renderPeriodHeatmap('acad-period-heatmap',data.series,data.competencies,{
+     onSelect:({code,period})=>showProof(data,'mirae',code,period)
+    });
    }catch(e){toast('시각화 오류: '+e.message);}
   };
   f('acad-viz-apply').addEventListener('click',render);
+  f('acad-viz-toggle').addEventListener('click',()=>{sample=!sample;render()});
   await render();
  }
 
