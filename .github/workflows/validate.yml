@@ -16,12 +16,16 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          for script in scripts/deploy-student-server123.sh scripts/configure-student-dns-server123.sh scripts/configure-student-caddy-server123.sh; do
+          for script in scripts/deploy-student-server123.sh scripts/configure-student-dns-server123.sh scripts/setup-student-highport-https-server123.sh scripts/repair-student-highport-nginx-server123.sh scripts/configure-api-student-dns-server123.sh scripts/setup-api-student-highport-https-server123.sh scripts/renew-student-highport-tls-server123.sh; do
             test -f "$script"
             bash -n "$script"
           done
           ! test -f server.mjs
           ! test -f public/index.html
+          test -s index.html
+          test -s app.js
+          test -s styles.css
+          ! test -e scripts/configure-student-caddy-server123.sh
           echo STUDENT_DEPLOY_REPO_SCRIPT_VALIDATION=PASS
       - name: Reject secrets, DBs, MP4s and node_modules
         shell: bash
