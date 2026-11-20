@@ -54,9 +54,27 @@ export function makeMonthlyUI(h){
    html+='<p class="sub">학생별 담당 교수 변경은 두 교수 배정 화면에서만 가능합니다. 별도 부서 심사 결과는 실적별로 기록됩니다.</p>';
    html+='<div class="inline-btns">'+action('멘토·지도교수 배정','monthlyAssignReviewers()')+
     action('6P·MIRAE 인정 기준 관리','monthlyEditCriteria()')+
+    action('MIRAE 5개 영역 명칭·정의','monthlyEditMiraeCatalog()')+
+    action('부서 전체 MIRAE·6P 그래프·인쇄',"monthlyVisualize('department')")+
     action('학생별 기준·현황 확인','monthlyChooseStudent()')+
     action('부서 전체 현황·CSV 추출','monthlyAdminOverview()')+'</div>';
   }
+  const finals=(await api('/api/final-reports')).items;
+  const finalActions=student?'<button class="btn primary" onclick="app.newFinalReport()">＋ 최종 연구결과보고서</button>':'';
+  const finalRows=finals.map(f=>{
+   const current=f.reviews.filter(x=>x.revision===f.revision);
+   let actions='<button class="link" onclick="app.finalReportDetail('+f.id+')">상세·이전 제출본</button>';
+   if(student&&['draft','revision'].includes(f.status))
+    actions+=' <button class="link" onclick="app.editFinalReport('+f.id+')">수정</button> <button class="link" onclick="app.submitFinalReport('+f.id+')">제출</button>';
+   if(role==='professor'&&f.status==='submitted'&&f.assignments.some(a=>a.professor_id===state.user.id)&&
+    !current.some(a=>a.professor_id===state.user.id))
+    actions+=' <button class="link" onclick="app.reviewFinalReport('+f.id+',\'confirmed\')">확인</button>'+
+     ' <button class="link" onclick="app.reviewFinalReport('+f.id+',\'revision\')">보완 요청</button>';
+   return [esc(f.title),esc(f.status),f.revision+'차',current.length+'/2명',actions];
+  });
+  html+=panel('최종 연구결과보고서',
+   finalActions+table(['보고서','상태','제출 차수','교수별 확인','업무'],finalRows,'최종 연구결과보고서가 없습니다.'),
+   '수행내용·성과·향후 계획을 제출하고 이전 제출본 및 교수별 확인 이력을 보존합니다.');
   document.querySelector('#main').innerHTML=html;
  }
  function findReport(id){return cache.find(x=>x.id===Number(id));}
@@ -76,6 +94,8 @@ export function makeMonthlyUI(h){
    '<label class="full">보고서 제목<input name="title" maxlength="160" required value="'+esc(row.title||'')+'"></label>'+
    '<label class="full">활동·참여·성과 내용<textarea name="content" maxlength="6000" required>'+
     esc(row.content||'')+'</textarea></label>'+
+   '<label class="full">참여내역<textarea name="participation_details" maxlength="4000" required>'+esc(row.participation_details||'')+'</textarea></label>'+
+   '<label class="full">주요 성과<textarea name="outcomes" maxlength="4000" required>'+esc(row.outcomes||'')+'</textarea></label>'+
    '<label class="full">향후 계획<textarea name="future_plan" maxlength="3000" required>'+esc(row.future_plan||'')+
     '</textarea></label></div>'+
    activityFields(activities,row.activities?.map(a=>a.id)||[])+
@@ -173,6 +193,8 @@ export function makeMonthlyUI(h){
   const r=findReport(id);if(!r)return;
   let h='<div class="info-row"><b>대상 월 · 제출본</b><span>'+esc(r.target_month)+' · '+r.revision+'차</span></div>'+
    '<div class="info-row"><b>활동 내용</b><span>'+esc(r.content)+'</span></div>'+
+   '<div class="info-row"><b>참여내역</b><span>'+esc(r.participation_details||'—')+'</span></div>'+
+   '<div class="info-row"><b>성과</b><span>'+esc(r.outcomes||'—')+'</span></div>'+
    '<div class="info-row"><b>향후 계획</b><span>'+esc(r.future_plan)+'</span></div>'+
     showReviewer(r);
   const role=state.user.role;
@@ -210,6 +232,8 @@ export function makeMonthlyUI(h){
    table(['제출 차수','제출일','보존된 보고서 내용','관련 실적','첨부'],
     r.versions.map(v=>[v.revision+'차',esc(v.submitted_at),
      '<details><summary>'+esc(v.snapshot.title)+'</summary><p>'+esc(v.snapshot.content)+
+      '</p><p>참여내역: '+esc(v.snapshot.participation_details||'—')+
+      '</p><p>성과: '+esc(v.snapshot.outcomes||'—')+
       '</p><p>향후 계획: '+esc(v.snapshot.future_plan)+'</p></details>',
      v.snapshot.activities.map(a=>'#'+a.id+' '+esc(a.title)).join('<br>')||'—',
      v.snapshot.attachments.map(a=>esc(a.filename)).join('<br>')||'—'])),
@@ -267,7 +291,8 @@ export function makeMonthlyUI(h){
    });
    if(document.querySelector('#modal')?.open)document.querySelector('#modal').close();
    const exception=d.exception_8th_semester;
-   const toolbar='<div class="inline-btns"><button class="btn" onclick="app.monthlyExportProgress('+studentId+')">화면 기준 CSV 추출</button>'+
+   const toolbar='<div class="inline-btns"><button class="btn" onclick="app.monthlyVisualize('+studentId+')">MIRAE·6P 그래프 / 기간 비교 / 인쇄</button>'+
+    '<button class="btn" onclick="app.monthlyExportProgress('+studentId+')">화면 기준 CSV 추출</button>'+
     (state.user.role==='admin'?'<button class="btn" onclick="app.monthlyEditProfile('+studentId+')">학생 학기·예외 설정</button>'+
      '<button class="btn" onclick="app.monthlyEditCriteria()">6P·MIRAE 기준 관리</button>':'')+'</div>';
    openModal('6P·MIRAE 인정 실적 · 학생 '+studentId,
@@ -276,7 +301,12 @@ export function makeMonthlyUI(h){
     panel('6P 단계별 기본 충족·부서 확정',table(['단계','요구/인정/부족','인정 근거','부서 최종 상태'],requirements))+
     panel('MIRAE 5개 역량 · 인정 근거·기간별 변화',table(['역량','요구','인정','충족','근거','월별 분포'],mirae))+
     '<p class="sub">P1: '+esc(d.P1.status)+' · P2: '+esc(d.P2.status)+
+    ' · P1 연구실: '+esc(d.profile.research_lab||'미등록')+
+    ' · P1 확인근거: '+esc(d.profile.p1_evidence||'미등록')+
+    ' · P2 확인근거: '+esc(d.profile.p2_evidence||'미등록')+
     ' · P6 졸업·진학: '+esc(d.profile.graduation_status)+
+    ' · 대학원 진학확인: '+esc(d.profile.postgraduate_admission_status||'pending')+
+    ' · 진학기관: '+esc(d.profile.postgraduate_destination||'미등록')+
     ' · 학년도/학기: '+d.profile.year+'/'+d.profile.term+
     ' · 기수: '+esc(d.profile.cohort)+' · 기준 출처: '+esc(d.criteria.source)+
     ' (판본 '+esc(d.criteria.revision??'기본')+')</p>'+
@@ -288,6 +318,97 @@ export function makeMonthlyUI(h){
      d.unmapped_activities.length+'건 · 관리자가 개별 근거를 지정해야 집계됩니다.</p>':''));
   }catch(e){toast('조회 실패: '+e.message);}
  }
+
+ function academicBarChart(values,title){
+  const max=Math.max(1,...values.map(v=>v.value));
+  const items=values.map(x=>{
+   const width=Math.round(x.value/max*100);
+   return '<div style="display:grid;grid-template-columns:minmax(80px,110px) 1fr 46px;gap:10px;align-items:center;margin:9px 0">'+
+    '<span class="micro">'+esc(x.label)+'</span>'+
+    '<div style="height:18px;background:#e9eff3;border-radius:5px;overflow:hidden">'+
+     '<div style="width:'+width+'%;height:18px;background:#316e9a;border-radius:5px"></div></div>'+
+    '<b style="font-size:12px;text-align:right">'+x.value+'건</b></div>';
+  }).join('');
+  return '<section style="border:1px solid #dfe6ed;padding:14px;border-radius:9px;min-width:0">'+
+   '<h3 style="margin:0 0 12px">'+esc(title)+'</h3>'+items+'</section>';
+ }
+ function academicLineChart(rows,codes){
+  const w=860,h=290,left=48,right=20,top=40,bottom=62;
+  const plotW=w-left-right,plotH=h-top-bottom;
+  const max=Math.max(1,...rows.flatMap(row=>codes.map(k=>row.competencies[k]||0)));
+  const xs=i=>left+(rows.length===1?plotW/2:i*plotW/(rows.length-1));
+  const ys=n=>top+plotH-n/max*plotH;
+  const colors=['#226d9c','#c96e30','#16846c','#8657a3','#cb5274'];
+  const grid=[0,1,2,3,4].map(n=>{
+   const value=Math.round(max*n/4),y=ys(value);
+   return '<line x1="'+left+'" y1="'+y+'" x2="'+(w-right)+'" y2="'+y+'" stroke="#d8e3ed"/>'+
+    '<text x="'+(left-8)+'" y="'+(y+4)+'" text-anchor="end" font-size="11">'+value+'</text>';
+  }).join('');
+  const plotted=codes.map((code,i)=>{
+   const pts=rows.map((row,j)=>xs(j)+','+ys(row.competencies[code]||0)).join(' ');
+   return '<polyline points="'+pts+'" fill="none" stroke="'+colors[i]+'" stroke-width="3" stroke-linejoin="round"/>'+
+    rows.map((row,j)=>'<circle cx="'+xs(j)+'" cy="'+ys(row.competencies[code]||0)+'" r="3.3" fill="'+colors[i]+'"/>').join('');
+  }).join('');
+  const step=Math.max(1,Math.ceil(rows.length/9));
+  const tick=rows.map((row,j)=>j%step===0||j===rows.length-1?
+   '<text x="'+xs(j)+'" y="'+(h-35)+'" font-size="10" text-anchor="middle">'+esc(row.label)+'</text>':'').join('');
+  const legend=codes.map((code,i)=>'<circle cx="'+(58+i*148)+'" cy="17" r="5" fill="'+colors[i]+'"/>'+
+   '<text x="'+(69+i*148)+'" y="21" font-size="12">'+esc(code)+'</text>').join('');
+  return '<svg viewBox="0 0 '+w+' '+h+'" role="img" aria-label="MIRAE 기간별 변화 비교" '+
+   'style="width:100%;max-width:100%;min-height:170px">'+legend+grid+plotted+tick+'</svg>';
+ }
+ async function monthlyVisualize(studentId){
+  const origin=window.STUDENT_API_BASE||'';
+  const base='/api/academic-visualization/'+studentId;
+  const initial=await api(base);
+  if(document.querySelector('#modal')?.open)document.querySelector('#modal').close();
+  openModal('MIRAE·6P 현재 분포 · 학기/기간 비교 · 인쇄',
+   '<div class="form-grid" id="acad-viz-filters">'+
+    '<label>시작 월<input id="acad-viz-from" type="month" value="'+esc(initial.filters.from)+'"></label>'+
+    '<label>종료 월<input id="acad-viz-to" type="month" value="'+esc(initial.filters.to)+'"></label>'+
+    '<label>기간 묶음<select id="acad-viz-group"><option value="month">월별</option>'+
+     '<option value="semester">학기별</option></select></label></div>'+
+   '<div class="inline-btns"><button class="btn primary" id="acad-viz-apply" type="button">기간 비교</button>'+
+    '<a class="btn" id="acad-viz-print" target="_blank" rel="noopener noreferrer">그래프·도표 인쇄/PDF</a></div>'+
+   '<div id="acad-viz-output">조회 중...</div>');
+  document.querySelector('#modal').classList.add('academic-viz');
+  const container=document.querySelector('#modal-body');
+  const f=id=>container.querySelector('#'+id);
+  const params=()=>new URLSearchParams({from:f('acad-viz-from').value,to:f('acad-viz-to').value,
+   group_by:f('acad-viz-group').value});
+  const render=async()=>{
+   try{
+    const p=params();
+    const data=await api(base+'?'+p.toString());
+    const phases=data.phase_codes.map(k=>({label:k,value:data.current.phases[k]}));
+    const competences=data.competencies.map(k=>({
+     label:k.code+' · '+k.label,value:data.current.competencies[k.code]}));
+    const keys=data.competencies.map(c=>c.code);
+    const tabular=data.series.map(period=>[
+     esc(period.label),period.unique_activities+'건',
+     ...keys.map(k=>period.competencies[k]+'건'),
+     ...data.phase_codes.map(k=>period.phases[k]+'건')
+    ]);
+    f('acad-viz-print').href=origin+base+'/print?'+p.toString();
+    f('acad-viz-output').innerHTML=
+     '<p class="sub">현재 부서 인정 활동 '+data.current.unique_activities+'건 / 선택 기간 인정 활동 '+
+      data.selected_period.unique_activities+'건. 여러 역량에 중복 연계된 1개 활동은 역량별 각각 집계됩니다.</p>'+
+     '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px">'+
+      academicBarChart(competences,'현재 MIRAE 5개 영역 분포')+
+      academicBarChart(phases,'현재 6P 단계별 인정 실적')+'</div>'+
+     '<section style="border:1px solid #dfe6ed;border-radius:9px;padding:14px;margin-top:14px">'+
+      '<h3>선택 기간의 '+(data.filters.group_by==='month'?'월별':'학기별')+' MIRAE 인정 건수 추이</h3>'+
+      academicLineChart(data.series,keys)+'</section>'+
+     panel('기간별 MIRAE·6P 비교 도표',
+      table(['기간','인정 활동',...data.competencies.map(x=>x.code),
+       ...data.phase_codes],tabular))+
+     '<p class="micro">'+data.notes.map(esc).join(' ')+'</p>';
+   }catch(e){toast('시각화 오류: '+e.message);}
+  };
+  f('acad-viz-apply').addEventListener('click',render);
+  await render();
+ }
+
  async function monthlyExportProgress(studentId){
   try{
    const origin=window.STUDENT_API_BASE||'';
@@ -389,10 +510,17 @@ export function makeMonthlyUI(h){
    '<label>선발일<input name="selection_date" type="date" value="'+esc(p.selection_date||'')+'"></label>'+
    '<label>P1 선발·연구실 배치 확인<select name="p1_status">'+
     ['pending','confirmed','revision'].map(v=>option(v,p.p1_status,v)).join('')+'</select></label>'+
+   '<label>연구실 배치<input name="research_lab" maxlength="500" value="'+esc(p.research_lab||'')+'"></label>'+
+   '<label>P1 확인 근거<input name="p1_evidence" maxlength="500" value="'+esc(p.p1_evidence||'')+'"></label>'+
    '<label>P2 초기 계획·사전활동 확인<select name="p2_status">'+
     ['pending','confirmed','revision'].map(v=>option(v,p.p2_status,v)).join('')+'</select></label>'+
-   '<label>졸업·진학 상태<select name="graduation_status">'+opts([
-    ['pending','확인 전'],['enrolled','재학'],['graduated','졸업'],['completed','수료'],['admitted','대학원 진학']])+
+   '<label>P2 확인 근거<input name="p2_evidence" maxlength="500" value="'+esc(p.p2_evidence||'')+'"></label>'+
+   '<label>대학원 진학기관·진로<input name="postgraduate_destination" maxlength="500" value="'+esc(p.postgraduate_destination||'')+'"></label>'+
+   '<label>대학원 진학 확인<select name="postgraduate_admission_status">'+
+    [['pending','확인 전'],['not_applied','미지원'],['applied','지원'],['admitted','합격·진학'],['not_admitted','불합격']].map(([v,t])=>option(v,p.postgraduate_admission_status||'pending',t)).join('')+
+    '</select></label>'+
+   '<label>학적(재학·졸업·수료) 상태<select name="graduation_status">'+opts([
+    ['pending','확인 전'],['enrolled','재학'],['graduated','졸업'],['completed','수료']])+
     '</select></label></div><p class="sub">8학기 예외는 2026학년도 2학기 재학 8학기 정보를 기준으로 검토 표시만 합니다.</p>'+
     formActions,async f=>{
      const b=Object.fromEntries(f);b.year=Number(b.year);b.term=Number(b.term);
@@ -434,6 +562,33 @@ export function makeMonthlyUI(h){
     await api('/api/academic-rules',{method:'PUT',body:JSON.stringify(body)});
     toast('기준·적용 사유·변경 이력을 DB에 저장했습니다.');
    });
+ }
+ async function monthlyEditMiraeCatalog(){
+  const r=await api('/api/academic-mirae-catalog'),codes=['M','I','R','A','E'];
+  const rows=codes.map(code=>{
+   const x=r.items[code];
+   return '<fieldset style="border:1px solid #dae4eb;border-radius:8px;padding:12px"><legend>'+
+    code+' · '+esc(x.name)+'</legend><div class="form-grid">'+
+    '<label>한글 명칭<input name="'+code+'.name" maxlength="100" value="'+esc(x.name)+'" required></label>'+
+    '<label>영문 명칭<input name="'+code+'.english" maxlength="100" value="'+esc(x.english)+'" required></label>'+
+    '<label class="full">발주기관 확정 정의<textarea name="'+code+'.definition" maxlength="1200">'+
+     esc(x.definition)+'</textarea></label></div></fieldset>';
+  }).join('');
+  openModal('MIRAE 5개 영역 · 기관 확정 기준 편집',
+   '<form><div class="form-grid"><label>학년도<input name="year" type="number" min="2020" max="2100" value="2026" required></label>'+
+    '<label>학기<select name="term"><option value="1">1학기</option><option value="2" selected>2학기</option></select></label>'+
+    '<label>기수<input name="cohort" maxlength="50" value="all" required></label></div>'+
+    '<p class="sub">현재 표시는 잠정 명칭입니다. 공식 문서 확인 후 담당 부서가 명칭·정의를 확정해야 합니다.</p>'+
+    rows+'<label>변경 근거·승인 내역<textarea name="reason" maxlength="600" required></textarea></label>'+formActions,
+    async f=>{
+     const items={};
+     for(const code of codes)items[code]={name:f.get(code+'.name'),english:f.get(code+'.english'),
+      definition:f.get(code+'.definition')};
+     await api('/api/academic-mirae-catalog',{method:'PUT',body:JSON.stringify({
+      year:Number(f.get('year')),term:Number(f.get('term')),cohort:f.get('cohort'),
+      reason:f.get('reason'),items})});
+     toast('MIRAE 명칭·정의와 변경 이력을 저장했습니다.');
+    });
  }
  async function monthlyMapActivity(activityId,studentId){
   const d=await api('/api/academic-progress/'+studentId);
@@ -494,7 +649,58 @@ export function makeMonthlyUI(h){
     toast('교수 두 명의 배정과 처리자 이력이 저장됐습니다.');
    });
  }
- return {page,actions:{newMonthlyActivity,newMonthlyReport,editMonthlyReport,submitMonthlyReport,
+
+ async function newFinalReport(){
+  const {items}=await api('/api/plans');
+  if(!items.length){toast('활동계획을 먼저 등록하세요.');return;}
+  const pick=items.map(x=>'<option value="'+x.id+'">'+esc(x.title)+'</option>').join('');
+  openModal('최종 연구결과보고서 작성','<form><label>활동계획<select name="plan_id">'+pick+'</select></label>'+
+   '<label>보고서 제목<input name="title" maxlength="160" required></label>'+
+   '<label>수행내용<textarea name="execution_content" maxlength="8000" required></textarea></label>'+
+   '<label>주요 성과<textarea name="outcomes" maxlength="6000" required></textarea></label>'+
+   '<label>향후 계획<textarea name="future_plan" maxlength="4000" required></textarea></label>'+
+   '<p class="micro">발주기관 공식 제공 서식의 세부 항목은 별도로 대조해야 합니다.</p>'+formActions,
+   async f=>{const b=Object.fromEntries(f);b.plan_id=Number(b.plan_id);
+    await api('/api/final-reports',dataBody(b));toast('최종 보고서 초안이 저장되었습니다.');});
+ }
+ async function editFinalReport(id){
+  const r=await api('/api/final-reports/'+id);
+  openModal('최종 연구결과보고서 수정','<form>'+
+   '<label>제목<input name="title" maxlength="160" value="'+esc(r.title)+'" required></label>'+
+   '<label>수행내용<textarea name="execution_content" maxlength="8000" required>'+esc(r.execution_content)+'</textarea></label>'+
+   '<label>성과<textarea name="outcomes" maxlength="6000" required>'+esc(r.outcomes)+'</textarea></label>'+
+   '<label>향후 계획<textarea name="future_plan" maxlength="4000" required>'+esc(r.future_plan)+'</textarea></label>'+formActions,
+   async f=>{await api('/api/final-reports/'+id,{method:'PATCH',body:JSON.stringify(Object.fromEntries(f))});
+    toast('최종보고서가 수정됐습니다.');});
+ }
+ async function submitFinalReport(id){
+  if(!confirm('최종 연구결과보고서를 두 교수에게 제출하고 제출본을 잠글까요?'))return;
+  try{await api('/api/final-reports/'+id+'/submit',dataBody({}));
+   toast('최종보고서 제출본을 저장하고 두 교수에게 전달했습니다.');await loadView();}
+  catch(e){toast('최종보고서 제출 오류: '+e.message);}
+ }
+ async function finalReportDetail(id){
+  const r=await api('/api/final-reports/'+id);
+  const revisions=r.versions.map(v=>'<tr><td>'+v.revision+'차</td><td>'+esc(v.submitted_at)+
+   '</td><td><b>수행내용</b> '+esc(v.snapshot.execution_content)+
+   '<p><b>성과</b> '+esc(v.snapshot.outcomes)+'</p><p><b>향후 계획</b> '+
+   esc(v.snapshot.future_plan)+'</p></td></tr>').join('');
+  const reviews=r.reviews.map(v=>[esc(v.revision+'차'),esc(v.reviewer_role),
+   esc(v.decision),esc(v.feedback),esc(v.reviewed_at)]);
+  openModal('최종보고서 · 제출본 및 교수 확인 이력',
+   '<p><b>'+esc(r.title)+'</b> · '+esc(r.status)+'</p>'+
+   panel('현재 수행내용·성과·계획','<p>'+esc(r.execution_content)+'</p><p>'+esc(r.outcomes)+'</p><p>'+esc(r.future_plan)+'</p>')+
+   panel('교수별 확인 이력',table(['차수','담당','처리','의견','시각'],reviews))+
+   '<h3>이전 제출본 원문</h3><div class="table-scroll"><table class="data-table"><thead><tr><th>차수</th><th>제출일</th><th>당시 원문</th></tr></thead><tbody>'+
+   revisions+'</tbody></table></div>');
+ }
+ async function reviewFinalReport(id,decision){
+  openModal(decision==='revision'?'최종보고서 보완 요청':'최종보고서 확인',
+   '<form><label>교수 의견<textarea name="feedback" maxlength="1000" '+(decision==='revision'?'required':'')+'></textarea></label>'+formActions,
+   async f=>{await api('/api/final-reports/'+id+'/review',dataBody({decision,feedback:f.get('feedback')}));
+    toast('최종보고서 독립 교수 검토 이력이 저장됐습니다.');});
+ }
+ return {page,actions:{newFinalReport,editFinalReport,submitFinalReport,finalReportDetail,reviewFinalReport,newMonthlyActivity,newMonthlyReport,editMonthlyReport,submitMonthlyReport,
   reviewMonthlyReport,monthlyDetail,monthlyAddEvidence,monthlyDeleteEvidence,monthlyRecognition,monthlyProgress,monthlyExportProgress,
-  monthlyChooseStudent,monthlyAdminOverview,monthlyEditProfile,monthlyEditCriteria,monthlyMapActivity,monthlyDecideStage,monthlyAssignReviewers}};
+  monthlyChooseStudent,monthlyAdminOverview,monthlyVisualize,monthlyEditProfile,monthlyEditCriteria,monthlyEditMiraeCatalog,monthlyMapActivity,monthlyDecideStage,monthlyAssignReviewers}};
 }
