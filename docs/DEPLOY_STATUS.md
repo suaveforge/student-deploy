@@ -81,3 +81,11 @@ Source workflow deploy-student-server123.yml owns application release. If build 
 - Current Student backend deployment [44688097841](https://github.com/suaveforge/student/actions/runs/44688097841) **SUCCESS** after fixing interrupted recording recovery and real X11 Chrome maximization/cursor offset. Source SQLite restart regression tests [44687571884](https://github.com/suaveforge/student/actions/runs/44687571884) PASS 3/3.
 - Real server123 Chrome 13-step run [44688193745](https://github.com/suaveforge/student/actions/runs/44688193745) **SUCCESS**. Video artifact [14607347819](https://github.com/suaveforge/student/actions/runs/44688193745/artifacts/14607347819), **61.267s H.264 1440×900**, genuine Chrome address/tab/OS cursor. Frames directly reviewed: full viewport, no black side margins or translation popup. Prior failed attempts were marked failed and superseded, not erased.
 - Unverified original procurement document and full acceptance gaps remain in source `docs/MVP_MASTER_STATUS.md`. No unrelated services changed.
+
+
+## 2026-11-20 W01 공고 2차 요약 기반 추가 기능 공개 웹 화면 배포
+
+- 최신 원본 소스 PR #1 병합 완료, 소스 CI `44701811018` SUCCESS (3 tests / fail 0). Node·SQLite Student 단독 서버 배포 `44701811040` SUCCESS.
+- GitHub Pages 루트 `app.js`를 실제 소스 `public/app.js`에 동기화하며, `synthetic-students-sample.csv`를 함께 공개한다. 관리자·학생·교수 공지사항 기능과 관리자 가상 CSV 이관 기능이 실제 DB API에 연결된다.
+- 원본 규격서는 여전히 **첨부 파일 링크만 확인 / 본문 미열람**. 6P/MIRAE 공식 규정, 부서 공식 인정·실자료 이관은 구현/정확성 판정 불가. 신규 기능은 임의 공식 규칙을 구성하지 않는다.
+- 공개 프런트엔드 Pages CI/실제 브라우저 반영 여부는 별도 실행결과로 검증해야 하며 현재 시점 성공을 선포하지 않는다.

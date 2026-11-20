@@ -16,11 +16,11 @@ function panel(title,body,sub=''){return `<section class="panel"><div class="pan
 function table(headers,rows,empty='표시할 데이터가 없습니다.'){return `<div class="table-scroll"><table class="data-table"><thead><tr>${headers.map(h=>`<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.length?rows.map(row=>`<tr>${row.map(v=>`<td>${v}</td>`).join('')}</tr>`).join(''):`<tr><td colspan="${headers.length}" class="empty">${esc(empty)}</td></tr>`}</tbody></table></div>`;}
 function stat(label,val,detail,ico){return `<div class="stat"><span class="icon">${ico}</span><div class="label">${esc(label)}</div><strong>${number(val)}</strong><small>${esc(detail)}</small></div>`;}
 function openModal(title,html,onSubmit){$('#modal-title').textContent=title;$('#modal-body').innerHTML=html;const form=$('#modal-body form');if(form&&onSubmit)form.onsubmit=async e=>{e.preventDefault();const btn=form.querySelector('button[type=submit]');if(btn)btn.disabled=true;try{await onSubmit(new FormData(form),form);$('#modal').close();await loadView();}catch(err){error(err);if(btn)btn.disabled=false;}};$('#modal').showModal();}
-function navOptions(){const base=[['MAIN','dashboard','▦','대시보드']];if(state.user.role==='student')return [...base,['ACTIVITY','plans','▤','나의 활동계획'],['','reports','▧','활동보고서'],['','achievements','◈','활동·성과 이력'],['','history','◷','변경 이력']];if(state.user.role==='professor')return [...base,['SUPERVISION','plans','▤','활동계획 심사'],['','students','♙','담당 학생'],['','reports','▧','활동보고서'],['','history','◷','검토 이력']];return [...base,['ADMINISTRATION','plans','▤','전체 활동계획'],['','students','♙','참여자·계정 관리'],['','assignments','⇄','담당 교수 배정'],['','programs','◫','프로그램 관리'],['','achievements','◈','성과 인정·6P'],['','reports','▧','활동보고서'],['','history','◷','변경 이력'],['RECORDING','recordings','⏺','자동 시연 녹화']];}
+function navOptions(){const base=[['MAIN','dashboard','▦','대시보드']];if(state.user.role==='student')return [...base,['','notices','▣','공지사항'],['ACTIVITY','plans','▤','나의 활동계획'],['','reports','▧','활동보고서'],['','achievements','◈','활동·성과 이력'],['','history','◷','변경 이력']];if(state.user.role==='professor')return [...base,['','notices','▣','공지사항'],['SUPERVISION','plans','▤','활동계획 심사'],['','students','♙','담당 학생'],['','reports','▧','활동보고서'],['','history','◷','검토 이력']];return [...base,['','notices','▣','공지사항'],['ADMINISTRATION','plans','▤','전체 활동계획'],['','students','♙','참여자·계정 관리'],['','assignments','⇄','담당 교수 배정'],['','programs','◫','프로그램 관리'],['','achievements','◈','가상 성과·6P'],['','reports','▧','활동보고서'],['','history','◷','변경 이력'],['RECORDING','recordings','⏺','자동 시연 녹화']];}
 function renderShell(){let last='';$('#navigation').innerHTML=navOptions().map(([section,key,ico,name])=>{let h='';if(section&&section!==last){h+=`<div class="nav-section">${section}</div>`;last=section;}return h+`<button class="nav-item ${state.view===key?'active':''}" data-nav="${key}"><span>${ico}</span><span>${name}</span></button>`;}).join('');$('#side-role').textContent=roleName[state.user.role]+' WORKSPACE';$('#current-person').textContent=state.user.name+' · '+roleName[state.user.role];let current=navOptions().find(x=>x[1]===state.view);$('#breadcrumb').textContent='WORKSPACE / '+(current?current[3]:'대시보드');}
 async function boot(){try{const {user}=await api('/api/me');state.user=user;$('#login').classList.add('hidden');$('#workspace').classList.remove('hidden');await navigate('dashboard');}catch{$('#login').classList.remove('hidden');$('#workspace').classList.add('hidden');}}
 async function navigate(view){state.view=view;state.search='';renderShell();$('#sidebar').classList.remove('open');$('#main').innerHTML='<div class="empty">데이터를 불러오고 있습니다...</div>';await loadView();}
-async function loadView(){try{if(state.view==='dashboard')return await dashboard();if(state.view==='plans')return await plansPage();if(state.view==='students')return await studentsPage();if(state.view==='reports')return await reportsPage();if(state.view==='achievements')return await achievementsPage();if(state.view==='assignments')return await assignmentsPage();if(state.view==='programs')return await programsPage();if(state.view==='history')return await historyPage();if(state.view==='recordings')return await recordingsPage();}catch(e){$('#main').innerHTML=`<div class="panel"><h2>자료를 불러오지 못했습니다.</h2><p>${esc(e.message)}</p><button class="btn" onclick="app.reload()">재시도</button></div>`;error(e);}}
+async function loadView(){try{if(state.view==='dashboard')return await dashboard();if(state.view==='notices')return await noticesPage();if(state.view==='plans')return await plansPage();if(state.view==='students')return await studentsPage();if(state.view==='reports')return await reportsPage();if(state.view==='achievements')return await achievementsPage();if(state.view==='assignments')return await assignmentsPage();if(state.view==='programs')return await programsPage();if(state.view==='history')return await historyPage();if(state.view==='recordings')return await recordingsPage();}catch(e){$('#main').innerHTML=`<div class="panel"><h2>자료를 불러오지 못했습니다.</h2><p>${esc(e.message)}</p><button class="btn" onclick="app.reload()">재시도</button></div>`;error(e);}}
 async function dashboard(){const data=await api('/api/overview');state.overview=data;const {counts,students,reports,activity}=data;const total=Object.values(counts).reduce((a,b)=>a+b,0);const waiting=counts.submitted+counts.revision;
 const student=state.user.role==='student',prof=state.user.role==='professor';const intro=student?'나의 성장 여정을 계획하고, 담당 교수의 피드백을 확인하세요.':prof?'담당 학생의 활동 계획과 진행 상황을 한눈에 관리하세요.':'사업 운영 전반과 학생별 성과를 실시간 데이터로 확인하세요.';
 let content=pageHead('OVERVIEW / '+roleName[state.user.role],'안녕하세요, '+state.user.name.replace(' (가상)','')+'님',intro);
@@ -46,8 +46,52 @@ if(prof&&p.status==='submitted')buttons+=`<button class="btn danger" onclick="ap
 openModal(p.title,h+`<div class="modal-actions">${buttons}</div>`);}
 async function actionPlan(pid,action){if(action==='submit'){if(!confirm('활동계획을 교수에게 제출하시겠습니까?'))return;try{await api('/api/plans/'+pid+'/action',{method:'POST',body:JSON.stringify({action})});$('#modal').close();toast('활동계획이 제출되었습니다.');await loadView();}catch(e){error(e);}return;}
 openModal({approved:'계획 승인',revision:'보완 요청',rejected:'계획 반려'}[action],`<form><p class="sub">처리 결과는 학생에게 즉시 반영되며 변경 이력에 저장됩니다.</p><label>교수 의견<textarea name="feedback" required placeholder="학생이 확인할 피드백을 작성하세요."></textarea></label><div class="modal-actions"><button type="button" class="btn" onclick="app.closeModal()">취소</button><button type="submit" class="btn primary">${action==='approved'?'승인 확정':'처리 확정'}</button></div></form>`,async form=>{await api('/api/plans/'+pid+'/action',{method:'POST',body:JSON.stringify({action,feedback:form.get('feedback')})});toast('교수 검토 결과가 저장되었습니다.');});}
-async function studentsPage(){const {items}=await api('/api/users');state.users=items;const admin=state.user.role==='admin';const head=pageHead('PEOPLE / ACCOUNTS',admin?'참여자·계정 관리':'담당 학생 목록',admin?'가상 계정 40명과 교수·관리자 계정을 관리합니다.':'배정된 학생 목록 및 학생별 진행 현황',admin?'<button class="btn" onclick="app.resetSeed()">↺ 가상 데이터 초기화</button><button class="btn primary" onclick="app.newUser()">＋ 계정 추가</button>':'');
+async function studentsPage(){const {items}=await api('/api/users');state.users=items;const admin=state.user.role==='admin';const head=pageHead('PEOPLE / ACCOUNTS',admin?'참여자·계정 관리':'담당 학생 목록',admin?'가상 계정 40명과 교수·관리자 계정을 관리합니다.':'배정된 학생 목록 및 학생별 진행 현황',admin?'<button class="btn" onclick="app.resetSeed()">↺ 가상 데이터 초기화</button><button class="btn" onclick="app.importDemoCSV()">가상 CSV 이관</button><button class="btn primary" onclick="app.newUser()">＋ 계정 추가</button>':'');
 const rows=items.map(u=>[`<span class="main-cell">${esc(u.name)}</span><br><span class="micro">${esc(u.username)}</span>`,esc(roleName[u.role]),esc(u.department||'—'),`<span class="pill ${u.active?'approved':'rejected'}">${u.active?'활성':'비활성'}</span>`,admin?`<button class="link" onclick="app.manageUser(${u.id})">관리 →</button>`:`<button class="link" onclick="app.studentPerformance(${u.id})">성과 보기 →</button>`]);$('#main').innerHTML=head+panel(admin?'계정 현황':'담당 학생',table(['사용자','역할','소속','계정 상태','업무'],rows));}
+
+function parseSyntheticCSV(text){
+ const src=text.replace(/^\uFEFF/,'').replace(/\r\n?/g,'\n');
+ if(src.length>100000)throw new Error('CSV는 100KB 이하만 허용합니다.');
+ const rows=[];let row=[],field='',quoted=false;
+ for(let i=0;i<src.length;i++){
+  const c=src[i];
+  if(quoted){if(c==='"'&&src[i+1]==='"'){field+='"';i++;}else if(c==='"')quoted=false;else field+=c;}
+  else if(c==='"'){if(field)throw new Error('CSV 따옴표 위치가 올바르지 않습니다.');quoted=true;}
+  else if(c===','){row.push(field);field='';}
+  else if(c==='\n'){row.push(field);field='';if(row.some(x=>x.trim()))rows.push(row);row=[];}
+  else field+=c;
+ }
+ if(quoted)throw new Error('CSV 따옴표가 닫히지 않았습니다.');
+ row.push(field);if(row.some(x=>x.trim()))rows.push(row);
+ const expected=['username','name','department','program_id','title','objective','activities','start_date','end_date'];
+ if(!rows.length||rows[0].join(',')!==expected.join(','))throw new Error('CSV 헤더가 샘플 형식과 다릅니다.');
+ const data=rows.slice(1);
+ if(!data.length||data.length>80)throw new Error('1~80개 가상 계정만 등록 가능합니다.');
+ return data.map((cells,i)=>{
+  if(cells.length!==expected.length)throw new Error((i+2)+'번째 줄의 CSV 열 수가 다릅니다.');
+  const x=Object.fromEntries(expected.map((n,j)=>[n,cells[j].trim()]));
+  if(!x.title){delete x.title;delete x.program_id;}
+  return x;
+ });
+}
+function importDemoCSV(){
+ openModal('가상 학생·활동자료 CSV 이관',
+  '<form><p class="sub">실제 학생 개인정보는 업로드할 수 없습니다. 계정은 demo_ 접두어, 이름은 (가상)으로 끝나야 합니다. 선택한 활동계획은 초안으로 저장됩니다.</p>'
+  +'<label>가상 CSV 파일<input name="file" type="file" accept=".csv,text/csv" required></label>'
+  +'<p class="micro">열 순서: username,name,department,program_id,title,objective,activities,start_date,end_date · 계획을 생략하면 뒤의 여섯 열은 비워 두세요.</p><p><a class="btn" href="./synthetic-students-sample.csv" download>↓ 가상 CSV 샘플 다운로드</a></p>'
+  +'<div class="modal-actions"><button class="btn primary" type="submit">미리보기 검증 후 DB 이관</button></div></form>',
+  async (_f,form)=>{
+   const file=form.querySelector('input[type=file]').files[0];
+   if(!file)throw new Error('CSV 파일을 선택하세요.');
+   if(file.size>100000)throw new Error('CSV는 100KB 이하만 가능합니다.');
+   const rows=parseSyntheticCSV(await file.text());
+   const data={synthetic:true,rows};
+   const preview=await api('/api/admin/import-preview',{method:'POST',body:JSON.stringify(data)});
+   if(!confirm('가상 학생 '+preview.students+'명, 활동계획 초안 '+preview.plans+'건을 실제 시연 DB에 저장할까요?'))return;
+   const saved=await api('/api/admin/import',{method:'POST',body:JSON.stringify(data)});
+   toast('가상 학생 '+saved.students+'명과 활동계획 '+saved.plans+'건을 DB에 저장했습니다.');
+  });
+}
 function newUser(){openModal('가상 데모 계정 추가',`<form><div class="form-grid"><label>아이디<input name="username" required minlength="3" placeholder="student41"></label><label>표시 이름<input name="name" required placeholder="홍길동 (가상)"></label><label>역할<select name="role"><option value="student">학생</option><option value="professor">교수</option><option value="admin">관리자</option></select></label><label>초기 비밀번호<input name="password" type="text" required minlength="8" value="Demo2026!"></label></div><div class="modal-actions"><button type="submit" class="btn primary">계정 생성</button></div></form>`,async f=>{await api('/api/users',{method:'POST',body:JSON.stringify(Object.fromEntries(f))});toast('가상 계정이 생성되었습니다.');});}
 function manageUser(uid){const u=state.users.find(x=>x.id===uid);if(!u)return;openModal('계정 관리 · '+u.name,`<form><div class="form-grid"><label>이름<input name="name" value="${esc(u.name)}" required></label><label>계정 상태<select name="active"><option value="1" ${u.active?'selected':''}>활성</option><option value="0" ${!u.active?'selected':''}>비활성</option></select></label><label class="full">새 비밀번호 (변경하지 않으면 비워두기)<input name="password" type="password" minlength="8" placeholder="변경 시 8자 이상"></label></div><div class="modal-actions"><button type="submit" class="btn primary">변경 저장</button></div></form>`,async f=>{const b={name:f.get('name'),active:f.get('active')==='1'};if(f.get('password'))b.password=f.get('password');await api('/api/users/'+uid,{method:'PATCH',body:JSON.stringify(b)});toast('계정 설정을 저장했습니다.');});}
 async function studentPerformance(uid){const a=await api('/api/achievements?student='+uid);const person=state.users.find(x=>x.id===uid);openModal('학생별 성과 · '+(person?.name||uid),table(['성과 항목','구분','역량','포인트'],a.items.map(x=>[esc(x.title),esc(x.category),esc(x.competency),number(x.points)])));}
@@ -60,11 +104,45 @@ async function reportsPage(){const {items}=await api('/api/reports');const stude
 async function newReport(){const {items}=await api('/api/plans');if(!items.length){toast('먼저 활동계획을 등록하세요.');return;}
 openModal('활동보고서 작성',`<form><label>관련 활동계획<select name="plan_id">${items.map(x=>`<option value="${x.id}">${esc(x.title)}</option>`).join('')}</select></label><label>보고서 제목<input name="title" required maxlength="160" placeholder="활동 결과 요약"></label><label>활동 내용<textarea name="content" required maxlength="6000" placeholder="실제 수행 내용과 결과를 작성하세요."></textarea></label><label>증빙 첨부 (선택, 2MB 이하)<input type="file" name="file" accept=".pdf,.png,.jpg,.jpeg,.txt"></label><p class="micro">PDF, PNG, JPG, TXT 형식만 허용합니다. 교수·운영 관리자만 열람할 수 있습니다.</p><div class="modal-actions"><button type="submit" class="btn primary">보고서 DB 저장</button></div></form>`,async (f,form)=>{const b={plan_id:Number(f.get('plan_id')),title:f.get('title'),content:f.get('content')};const file=form.querySelector('input[type=file]').files[0];if(file){if(file.size>2*1024*1024)throw new Error('파일은 2MB 이하만 가능합니다.');const base64=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result).split(',')[1]);reader.onerror=reject;reader.readAsDataURL(file);});b.file={name:file.name,mime:file.type||'application/octet-stream',base64};}await api('/api/reports',{method:'POST',body:JSON.stringify(b)});toast('활동보고서와 첨부파일을 저장했습니다.');});}
 async function achievementsPage(){const student=state.user.role==='student';let results=[];if(student){results=(await api('/api/achievements')).items;}else {const {items}=await api('/api/users');state.users=items;}
-const actions=student?'':'<button class="btn primary" onclick="app.newAchievement()">＋ 성과 인정 등록</button>';let html=pageHead('6P · MIRAE COMPETENCIES',student?'활동·성과 이력':'성과·역량 인정 관리',student?'6P 이수, 비교과, 연구성과 및 MIRAE 역량 관련 가상 이력입니다.':'학생 성과 기록의 등록과 인정 내역을 관리합니다.',actions);
-if(student){const points=results.reduce((a,b)=>a+b.points,0);html+=`<div class="stat-grid">${stat('총 인정 포인트',points,'시연용 점수','◈')}${stat('등록 성과',results.length,'가상 성과','▤')}${stat('6P 이수',results.filter(x=>x.category==='6P').length,'이수 항목','✓')}${stat('연구성과',results.filter(x=>x.category==='연구성과').length,'발표 및 연구','✳')}</div>`+panel('나의 성과 이력',table(['성과 항목','분류','MIRAE 역량','포인트','인정일'],results.map(r=>[`<b>${esc(r.title)}</b>`,esc(r.category),esc(r.competency),number(r.points),dat(r.created_at)])));}
-else {html+=panel('성과 인정 운영',`<p class="sub">기존 데이터는 가상 값이며 6P/MIRAE의 공식 산정 방식은 원본 서식 확인 후 확정해야 합니다.</p><div class="inline-btns"><button class="btn" onclick="app.navigate('students')">참여자 조회</button><button class="btn primary" onclick="app.newAchievement()">가상 성과 추가</button></div>`);}$('#main').innerHTML=html;}
+const actions=student?'':'<button class="btn primary" onclick="app.newAchievement()">＋ 성과 인정 등록</button>';let html=pageHead('6P · MIRAE COMPETENCIES',student?'활동·성과 이력':'가상 성과·역량 기록 관리',student?'6P 이수, 비교과, 연구성과 및 MIRAE 역량 관련 가상 이력입니다.':'학생 성과 기록의 등록과 인정 내역을 관리합니다.',actions);
+if(student){const points=results.reduce((a,b)=>a+b.points,0);html+=`<div class="stat-grid">${stat('가상 누적 점수',points,'시연용 점수','◈')}${stat('등록 성과',results.length,'가상 성과','▤')}${stat('6P 분류 기록',results.filter(x=>x.category==='6P').length,'이수 항목','✓')}${stat('연구성과',results.filter(x=>x.category==='연구성과').length,'발표 및 연구','✳')}</div>`+panel('나의 성과 이력',table(['성과 항목','분류','MIRAE 역량','포인트','인정일'],results.map(r=>[`<b>${esc(r.title)}</b>`,esc(r.category),esc(r.competency),number(r.points),dat(r.created_at)])));}
+else {html+=panel('시연 성과 운영',`<p class="sub">기존 데이터는 가상 값이며 6P/MIRAE의 공식 산정 방식은 원본 서식 확인 후 확정해야 합니다.</p><div class="inline-btns"><button class="btn" onclick="app.navigate('students')">참여자 조회</button><button class="btn primary" onclick="app.newAchievement()">가상 성과 추가</button></div>`);}$('#main').innerHTML=html;}
 function newAchievement(){const students=state.users.filter(x=>x.role==='student');openModal('가상 학생 성과 인정',`<form><div class="form-grid"><label class="full">학생<select name="student_id">${students.map(x=>`<option value="${x.id}">${esc(x.name)} · ${esc(x.username)}</option>`).join('')}</select></label><label class="full">성과명<input name="title" required placeholder="예: SW 연구 발표"></label><label>성과 구분<select name="category"><option>6P</option><option>비교과</option><option>연구성과</option><option>교육</option></select></label><label>역량 유형<input name="competency" required placeholder="창의융합"></label><label>데모 포인트<input name="points" type="number" min="0" max="100" value="3"></label></div><div class="modal-actions"><button type="submit" class="btn primary">성과 기록 저장</button></div></form>`,async f=>{let b=Object.fromEntries(f);b.student_id=Number(b.student_id);b.points=Number(b.points);await api('/api/achievements',{method:'POST',body:JSON.stringify(b)});toast('성과가 저장되었습니다.');});}
 function eventLabel(s){return ({login:'계정 로그인',draft_created:'계획 신규 작성',edited:'계획 수정',status_submitted:'계획 제출',status_approved:'계획 승인',status_rejected:'계획 반려',status_revision:'보완 요청',created:'신규 등록',updated:'내용 수정',assigned:'교수 배정',started:'녹화 시작'})[s]||s;}
+
+async function noticesPage(){
+ const {items}=await api('/api/notices');state.notices=items;
+ const admin=state.user.role==='admin';
+ const action=admin?'<button class="btn primary" onclick="app.newNotice()">＋ 공지 등록</button>':'';
+ const rows=items.map(n=>[
+  '<b>'+esc(n.title)+'</b><p class="sub">'+esc(n.content)+'</p>',
+  esc(n.author||'운영팀'),
+  '<span class="pill '+(n.published?'approved':'rejected')+'">'+(n.published?'게시 중':'비공개')+'</span>',
+  dat(n.updated_at),
+  admin?'<button class="link" onclick="app.editNotice('+n.id+')">수정 →</button>':'열람 가능'
+ ]);
+ $('#main').innerHTML=pageHead('ANNOUNCEMENTS','공지사항','사업 운영 안내와 공지를 확인합니다. 모든 데이터는 가상 시연용입니다.',action)
+  +panel('공지 목록',table(['제목 · 내용','작성자','공개 상태','수정일','업무'],rows,'등록된 공지가 없습니다.'));
+}
+function noticeFields(n={}){
+ return '<form><label>제목<input name="title" required maxlength="120" value="'+esc(n.title||'')+'"></label>'
+  +'<label>공지 내용<textarea name="content" required maxlength="3000">'+esc(n.content||'')+'</textarea></label>'
+  +'<label>공개 여부<select name="published"><option value="true" '+(n.published?'selected':'')+'>게시</option><option value="false" '+(!n.published?'selected':'')+'>비공개 보관</option></select></label>'
+  +'<div class="modal-actions"><button type="button" class="btn" onclick="app.closeModal()">취소</button><button type="submit" class="btn primary">DB 저장</button></div></form>';
+}
+function newNotice(){
+ openModal('운영 공지 작성',noticeFields(),async f=>{
+  await api('/api/notices',{method:'POST',body:JSON.stringify({title:f.get('title'),content:f.get('content'),published:f.get('published')==='true'})});
+  toast('공지사항을 DB에 저장했습니다.');
+ });
+}
+function editNotice(nid){
+ const n=state.notices.find(x=>x.id===nid);if(!n)return;
+ openModal('운영 공지 수정',noticeFields(n),async f=>{
+  await api('/api/notices/'+nid,{method:'PATCH',body:JSON.stringify({title:f.get('title'),content:f.get('content'),published:f.get('published')==='true'})});
+  toast('공지사항 변경 내용을 저장했습니다.');
+ });
+}
 async function historyPage(){const {items}=await api('/api/events');$('#main').innerHTML=pageHead('AUDIT LOG','상태 변경 이력','계획 제출·심사 및 데이터 변경 기록이 서버 DB에 저장됩니다.')+panel('변경 이벤트 로그',table(['시각','처리자','대상','처리 내용','비고'],items.map(e=>[dat(e.created_at),esc(e.actor||'시스템'),esc(e.entity)+' #'+e.entity_id,esc(eventLabel(e.action)),esc(e.details)])));}
 async function recordingsPage(){const {items}=await api('/api/recordings');const running=items.some(x=>['queued','running'].includes(x.status));let header=pageHead('SCREEN AUTOMATION / REAL CHROME','자동 시연 녹화','실제 Chrome GUI 전체 창을 자동 조작하고 FFmpeg로 데스크톱 전체를 촬영합니다.');let box=`<div class="recording-hero"><div><div class="eyebrow">FULL BROWSER CAPTURE</div><h2>관리자 버튼 한 번으로 MP4 생성</h2><p>학생 로그인 → 계획 작성·제출 → 교수 승인·피드백 → 관리자 확인 → 새로고침 유지 검증. 테스트 학생 정보만 이용하며 실패 시 완료 표시를 하지 않습니다.</p></div><button class="btn primary" id="record-start" onclick="app.recordNow()" ${running?'disabled':''}>⏺ ${running?'녹화 진행 중':'자동 시연 녹화 시작'}</button></div>`;
 let tableRows=items.map(r=>{const status=r.status==='completed'?'<span class="pill approved">완료 · 검증</span>':r.status==='failed'?'<span class="pill rejected">실패</span>':r.status==='running'?'<span class="pill submitted">진행 중</span>':'<span class="pill">대기</span>';return [`<b>녹화 #${r.id}</b><br><span class="micro">${dat(r.created_at)}</span>`,status,`<span class="badge-step">${esc(r.step)}</span>${r.error?`<div class="micro" style="color:#c64b5d">${esc(r.error.slice(0,300))}</div>`:''}`,r.status==='completed'?`<div class="inline-btns"><button class="btn" onclick="app.preview(${r.id})">▶ 미리보기</button><a class="btn" href="${apiURL('/api/recordings/'+r.id+'/video?download=1')}">↓ MP4 다운로드</a></div>`:r.status==='failed'?`<button class="btn" onclick="app.recordNow()" ${running?'disabled':''}>다시 시도</button>`:'자동 점검 중'];});
@@ -74,7 +152,7 @@ async function recordNow(){if(!confirm('샘플 계정으로 실제 Chrome을 자
 function preview(id){openModal('실제 Chrome 녹화 미리보기',`<video class="video-preview" controls autoplay preload="metadata" src="${apiURL('/api/recordings/'+id+'/video')}"></video><div class="modal-actions"><a class="btn primary" href="${apiURL('/api/recordings/'+id+'/video?download=1')}">MP4 다운로드 ↓</a></div>`);}
 async function resetSeed(){if(!confirm('가상 학생·교수·계획·성과 데이터만 초기 상태로 복구됩니다. 실제 녹화는 보존합니다. 계속할까요?'))return;try{await api('/api/admin/reset',{method:'POST',body:'{}'});toast('샘플 데이터 초기화 완료');await logout();}catch(e){error(e);}}
 async function logout(){clearInterval(state.recordTimer);try{await api('/api/logout',{method:'POST',body:'{}'});}catch{}state.user=null;state.view='dashboard';$('#workspace').classList.add('hidden');$('#login').classList.remove('hidden');$('#login-error').textContent='';}
-window.app={navigate,goPlans:()=>navigate('plans'),goRecordings:()=>navigate('recordings'),newPlan,editPlan,planDetail,actionPlan,newReport,newUser,manageUser,studentPerformance,newAssignment,newProgram,editProgram,newAchievement,recordNow,preview,resetSeed,closeModal:()=>$('#modal').close(),reload:loadView,logout};
+window.app={navigate,newNotice,editNotice,importDemoCSV,goPlans:()=>navigate('plans'),goRecordings:()=>navigate('recordings'),newPlan,editPlan,planDetail,actionPlan,newReport,newUser,manageUser,studentPerformance,newAssignment,newProgram,editProgram,newAchievement,recordNow,preview,resetSeed,closeModal:()=>$('#modal').close(),reload:loadView,logout};
 document.addEventListener('click',e=>{const nav=e.target.closest('[data-nav]');if(nav)navigate(nav.dataset.nav).catch(error);const demo=e.target.closest('[data-demo]');if(demo){$('#login-user').value=demo.dataset.demo;$('#login-password').value='Demo2026!';document.querySelectorAll('[data-demo]').forEach(n=>n.classList.toggle('selected',n===demo));}const action=e.target.closest('[data-action]');if(action?.dataset.action==='logout')logout();});
 $('#modal-close').addEventListener('click',()=>$('#modal').close());$('#menu-toggle').addEventListener('click',()=>$('#sidebar').classList.toggle('open'));
 $('#login-form').addEventListener('submit',async e=>{e.preventDefault();const btn=e.target.querySelector('button[type=submit]');btn.disabled=true;$('#login-error').textContent='';try{const b=Object.fromEntries(new FormData(e.target));const r=await api('/api/login',{method:'POST',body:JSON.stringify(b)});state.user=r.user;$('#login').classList.add('hidden');$('#workspace').classList.remove('hidden');await navigate('dashboard');}catch(err){$('#login-error').textContent=err.message;}finally{btn.disabled=false;}});
