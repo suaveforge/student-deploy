@@ -1,0 +1,38 @@
+name: W01 diagnose GitHub Pages custom-domain certificate
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/pages-https-diagnostic.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: read
+jobs:
+  inspect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect Pages certificate, domain verification and DNS
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo W01_PAGES_CERT_DIAGNOSTIC_BEGIN
+          gh api "/repos/$GITHUB_REPOSITORY/pages"             --jq '{status,cname,build_type,html_url,source,protected_domain_state,pending_domain_unverified_at,https_enforced,https_certificate}'
+          for target in 'student.suaveforge.com CNAME' 'student.suaveforge.com A'                         'student.suaveforge.com AAAA' 'suaveforge.com CAA'; do
+            host="${target% *}"
+            typ="${target##* }"
+            echo "DNS_${host}_${typ}"
+            curl --silent --show-error --max-time 12               "https://dns.google/resolve?name=$host&type=$typ"               | jq '{Status,Answer,Authority}'
+          done
+          echo GITHUB_PAGES_HTTPS_ENDPOINT
+          if curl --fail --silent --show-error --max-time 15               https://student.suaveforge.com/ -o /tmp/student-pages-https.html; then
+            grep -q 'MIRAE Pathways' /tmp/student-pages-https.html
+            echo STUDENT_TRUSTED_TLS=PASS
+          else
+            echo STUDENT_TRUSTED_TLS=NOT_READY
+          fi
+          echo W01_PAGES_CERT_DIAGNOSTIC_DONE
