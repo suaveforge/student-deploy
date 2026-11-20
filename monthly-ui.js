@@ -52,7 +52,9 @@ export function makeMonthlyUI(h){
    html+='<div class="inline-btns">'+action('6P 충족·부족 현황 보기','monthlyProgress('+state.user.id+')')+'</div>';
   }else if(admin){
    html+='<p class="sub">학생별 담당 교수 변경은 두 교수 배정 화면에서만 가능합니다. 별도 부서 심사 결과는 실적별로 기록됩니다.</p>';
-   html+='<div class="inline-btns">'+action('멘토·지도교수 배정','monthlyAssignReviewers()')+'</div>';
+   html+='<div class="inline-btns">'+action('멘토·지도교수 배정','monthlyAssignReviewers()')+
+    action('6P·MIRAE 인정 기준 관리','monthlyEditCriteria()')+
+    action('학생별 기준·현황 확인','monthlyChooseStudent()')+'</div>';
   }
   document.querySelector('#main').innerHTML=html;
  }
@@ -147,6 +149,7 @@ export function makeMonthlyUI(h){
    let buttons='미확정';
    if(role==='admin'&&r.status==='department_review'){
     buttons='<div class="inline-btns">'+
+     (a.recognition==='recognized'?action('6P·MIRAE 연계','monthlyMapActivity('+a.id+','+r.student_id+')'):'')+
      (a.recognition!=='recognized'?action('인정','monthlyRecognition('+r.id+','+a.id+',\'recognized\')'):
       action('인정취소','monthlyRecognition('+r.id+','+a.id+',\'cancelled\')'))+
      action('보완','monthlyRecognition('+r.id+','+a.id+',\'revision\')')+
@@ -178,23 +181,177 @@ export function makeMonthlyUI(h){
  }
  async function monthlyProgress(studentId){
   try{
-   const d=await api('/api/learning-progress/'+studentId);
-   const rows=d.stages.map(x=>{
-    const criteria=Object.entries(x.required).map(([k,v])=>{
-     const n=k==='combined_program'?'프로그램·비교과':(kinds[k]||k);
-     return esc(n+': 요구 '+v+'건 / 인정 '+x.counted[k]+'건 / 부족 '+x.missing[k]+'건');
+   const d=await api('/api/academic-progress/'+studentId);
+   const statusLabel={achieved:'달성',supplement:'보완',deferred:'유예',not_achieved:'미달성'};
+   const requirements=d.stages.map(x=>{
+    const pairs=Object.entries(x.required).map(([k,v])=>{
+     const name=k==='combined_program'?'프로그램·비교과':(kinds[k]||k);
+     return esc(name)+' '+v+'건 요구 / '+x.counted[k]+'건 인정 / '+x.missing[k]+'건 부족';
     }).join('<br>');
-    return [esc(x.phase),criteria,x.automatically_satisfied?'기본 수량 충족':'부족 요건 있음',
-     '학기말 부서 확정 별도'];
+    const links=x.evidence.length?'<details><summary>근거 '+x.evidence.length+'건</summary>'+
+     x.evidence.map(a=>'<div class="micro">#'+a.id+' · '+esc(a.activity_day)+' '+esc(a.title)+'</div>').join('')+
+      '</details>':'—';
+    const review=x.decision?(esc(statusLabel[x.decision.state]||x.decision.state)+
+     (x.decision.stale?' · <b>근거 변경·재검토 필요</b>':'')+'<br>'+esc(x.decision.reason)):'부서 미확정';
+    const actionButton=state.user.role==='admin'?
+     '<button class="link" onclick="app.monthlyDecideStage('+studentId+',\''+x.phase+'\')">심의 처리</button>':'';
+    return [esc(x.phase),pairs||'부서 선발·초기 활동 확인 별도',links,
+     (x.automatically_satisfied?'기본 수량 충족':'부족·검토 필요')+'<br>'+review+' '+actionButton];
+   });
+   const mirae=d.competencies.map(c=>{
+    const evidence=c.evidence.length?'<details><summary>반영 '+c.recognized+'건</summary>'+
+     c.evidence.map(a=>'<div class="micro">'+esc(a.activity_day)+' · #'+a.id+' '+esc(a.title)+'</div>').join('')+'</details>':'—';
+    const monthly=c.monthly.map(item=>{
+     const width=Math.min(100,Math.round(100*item.count/Math.max(1,c.recognized)));
+     return '<div style="display:flex;gap:6px;align-items:center;min-width:150px">'+
+      '<small>'+esc(item.month)+'</small><span style="height:7px;min-width:3px;background:#3d8fa3;width:'+width+'%;border-radius:6px"></span>'+
+      '<small>'+item.count+'건</small></div>';
+    }).join('')||'—';
+    return [esc(c.code+' · '+c.label),c.required===null?'기준 미확정':c.required+'건',
+     c.recognized+'건',c.status==='criteria_unset'?'기준 미확정':c.status==='satisfied'?'기준 충족':'부족',
+     evidence,monthly];
    });
    if(document.querySelector('#modal')?.open)document.querySelector('#modal').close();
-   openModal('6P 인정 실적 · 학생 '+studentId,
-    '<p class="sub">원본 제안요청서에 명시된 P3~P6 기본 건수만 표시. 학생 제안 P단계 기준이며 예외·대체·최종 이수 판정은 아직 미설정입니다.</p>'+
-    panel('단계별 요구·인정·부족',table(['단계','기본 요건·근거','기본 수량','최종 확정'],rows))+
-    '<p class="sub">P1: '+esc(d.P1.status)+' / P2: '+esc(d.P2.status)+
-    '<br>8학기 예외: '+esc(d.exception_8th_semester)+
-    '<br>MIRAE: '+esc(d.MIRAE.mapping_status)+' · '+esc(d.MIRAE.note)+'</p>');
+   const exception=d.exception_8th_semester;
+   const toolbar='<div class="inline-btns"><button class="btn" onclick="app.monthlyExportProgress('+studentId+')">화면 기준 CSV 추출</button>'+
+    (state.user.role==='admin'?'<button class="btn" onclick="app.monthlyEditProfile('+studentId+')">학생 학기·예외 설정</button>'+
+     '<button class="btn" onclick="app.monthlyEditCriteria()">6P·MIRAE 기준 관리</button>':'')+'</div>';
+   openModal('6P·MIRAE 인정 실적 · 학생 '+studentId,
+    '<p class="sub">부서 인정 완료 실적과 부서 지정 P단계만 집계합니다. 학생이 제안한 P단계는 최종 인정이 아닙니다.'+
+    ' MIRAE는 기준이 없으면 점수·가중치를 만들지 않습니다.</p>'+toolbar+
+    panel('6P 단계별 기본 충족·부서 확정',table(['단계','요구/인정/부족','인정 근거','부서 최종 상태'],requirements))+
+    panel('MIRAE 5개 역량 · 인정 근거·기간별 변화',table(['역량','요구','인정','충족','근거','월별 분포'],mirae))+
+    '<p class="sub">P1: '+esc(d.P1.status)+' · P2: '+esc(d.P2.status)+
+    ' · P6 졸업·진학: '+esc(d.profile.graduation_status)+
+    ' · 학년도/학기: '+d.profile.year+'/'+d.profile.term+
+    ' · 기수: '+esc(d.profile.cohort)+' · 기준 출처: '+esc(d.criteria.source)+
+    ' (판본 '+esc(d.criteria.revision??'기본')+')</p>'+
+    (exception.eligible?'<p class="sub"><b>8학기 예외 · 부서 검토 대상</b> '+
+     '프로그램·비교과 인정 '+exception.recognized_combined+'/2건, 선발 후 연구성과 '+exception.recognized_research_after_selection+
+     '건, 확인된 월별 보고서 '+exception.reviewed_reports_after_selection+
+     '건. 증빙 확인과 부서 결정 없이는 자동 달성 처리하지 않습니다.</p>':'')+
+    (d.unmapped_activities.length?'<p class="sub">P단계 또는 MIRAE 미연계 인정 실적 '+
+     d.unmapped_activities.length+'건 · 관리자가 개별 근거를 지정해야 집계됩니다.</p>':''));
   }catch(e){toast('조회 실패: '+e.message);}
+ }
+ async function monthlyExportProgress(studentId){
+  try{
+   const origin=window.STUDENT_API_BASE||'';
+   const r=await fetch(origin+'/api/academic-export.csv?student_id='+studentId,{
+    credentials:origin?'include':'same-origin'});
+   if(!r.ok)throw Error('CSV 추출 실패 ('+r.status+')');
+   const blob=await r.blob(),url=URL.createObjectURL(blob),a=document.createElement('a');
+   a.href=url;a.download='student-'+studentId+'-6p-mirae.csv';document.body.append(a);a.click();
+   a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+   toast('현재 화면과 동일 계산 기준의 CSV를 저장했습니다.');
+  }catch(e){toast('CSV 오류: '+e.message);}
+ }
+ async function monthlyChooseStudent(){
+  const {items}=await api('/api/users');
+  const students=items.filter(x=>x.role==='student');
+  openModal('학생별 6P·MIRAE 확인','<div class="table-scroll"><table class="data-table"><thead>'+
+   '<tr><th>학생</th><th>이수현황</th><th>학기 설정</th></tr></thead><tbody>'+
+   students.map(s=>'<tr><td>'+esc(s.name)+' · '+esc(s.username)+'</td>'+
+    '<td><button class="link" onclick="app.monthlyProgress('+s.id+')">6P·MIRAE 보기</button></td>'+
+    '<td><button class="link" onclick="app.monthlyEditProfile('+s.id+')">학기·예외</button></td></tr>').join('')+
+    '</tbody></table></div>');
+ }
+ async function monthlyEditProfile(studentId){
+  const d=await api('/api/academic-profile/'+studentId),p=d.profile;
+  if(document.querySelector('#modal')?.open)document.querySelector('#modal').close();
+  const option=(v,current,text)=>'<option value="'+v+'" '+(v===current?'selected':'')+'>'+text+'</option>';
+  const opts=states=>states.map(([v,t])=>option(v,p.graduation_status,t)).join('');
+  openModal('학생 '+studentId+' · 학기·6P 초기 상태 설정',
+   '<form><div class="form-grid"><label>학년도<input name="year" type="number" min="2020" max="2100" required value="'+p.year+'"></label>'+
+   '<label>학기<select name="term">'+option(1,p.term,'1학기')+option(2,p.term,'2학기')+'</select></label>'+
+   '<label>기수<input name="cohort" maxlength="50" required value="'+esc(p.cohort)+'"></label>'+
+   '<label>현재 재학 학기<input name="semester_no" type="number" min="1" max="14" value="'+(p.semester_no??'')+'"></label>'+
+   '<label>선발일<input name="selection_date" type="date" value="'+esc(p.selection_date||'')+'"></label>'+
+   '<label>P1 선발·연구실 배치 확인<select name="p1_status">'+
+    ['pending','confirmed','revision'].map(v=>option(v,p.p1_status,v)).join('')+'</select></label>'+
+   '<label>P2 초기 계획·사전활동 확인<select name="p2_status">'+
+    ['pending','confirmed','revision'].map(v=>option(v,p.p2_status,v)).join('')+'</select></label>'+
+   '<label>졸업·진학 상태<select name="graduation_status">'+opts([
+    ['pending','확인 전'],['enrolled','재학'],['graduated','졸업'],['completed','수료'],['admitted','대학원 진학']])+
+    '</select></label></div><p class="sub">8학기 예외는 2026학년도 2학기 재학 8학기 정보를 기준으로 검토 표시만 합니다.</p>'+
+    formActions,async f=>{
+     const b=Object.fromEntries(f);b.year=Number(b.year);b.term=Number(b.term);
+     b.semester_no=b.semester_no?Number(b.semester_no):null;b.selection_date=b.selection_date||null;
+     await api('/api/academic-profile/'+studentId,{method:'PUT',body:JSON.stringify(b)});
+     toast('학생 학기·기수 및 단계 상태를 저장했습니다.');
+    });
+ }
+ async function monthlyEditCriteria(){
+  const r=await api('/api/academic-rules');
+  const rule=r.effective,base=rule.requirements;
+  const codeName={M:'융합',I:'현장',R:'연구',A:'자기주도·공동체',E:'기초소양·시민의식'};
+  const numberInput=(phase,k)=>'<label>'+esc(phase+' · '+(k==='combined_program'?'프로그램·비교과':k))+
+   '<input type="number" min="0" max="50" name="'+phase+'.'+k+'" value="'+base[phase][k]+'" required></label>';
+  if(document.querySelector('#modal')?.open)document.querySelector('#modal').close();
+  openModal('부서 6P·MIRAE 기준 설정 · 이력 보존',
+   '<form><div class="form-grid"><label>학년도<input type="number" name="year" min="2020" max="2100" value="2026" required></label>'+
+   '<label>학기<select name="term"><option value="1">1학기</option><option value="2" selected>2학기</option></select></label>'+
+   '<label>기수<input name="cohort" maxlength="50" value="all" required></label></div>'+
+   '<h3>6P 기준 건수</h3><div class="form-grid">'+
+    ['P3','P4','P5','P6'].flatMap(p=>Object.keys(base[p]).map(k=>numberInput(p,k))).join('')+'</div>'+
+   '<h3>MIRAE 인정 기준</h3><p class="micro">학교가 확정하지 않은 영역은 빈칸으로 유지 · 임의 배점 금지</p>'+
+   '<div class="form-grid">'+Object.entries(codeName).map(([k,v])=>'<label>'+k+' · '+esc(v)+
+    '<input type="number" name="mirae.'+k+'" min="0" max="50" placeholder="미확정" value="'+
+    (rule.mirae_minima[k]??'')+'"></label>').join('')+'</div>'+
+   '<label>변경 사유·적용 근거<textarea name="reason" maxlength="600" required></textarea></label>'+
+   '<p class="micro">판본이 증가하며 과거 부서 확정 실적은 변경 기준과 대조할 때 재검토 대상으로 표시됩니다.</p>'+
+   formActions,async f=>{
+    const requirements={};for(const p of ['P3','P4','P5','P6']){
+     requirements[p]={};
+     for(const k of Object.keys(base[p]))requirements[p][k]=Number(f.get(p+'.'+k));
+    }
+    const mirae_minima={};
+    for(const k of Object.keys(codeName)){
+     const v=f.get('mirae.'+k);mirae_minima[k]=v===''?null:Number(v);
+    }
+    const body={year:Number(f.get('year')),term:Number(f.get('term')),cohort:f.get('cohort'),
+     requirements,mirae_minima,reason:f.get('reason')};
+    await api('/api/academic-rules',{method:'PUT',body:JSON.stringify(body)});
+    toast('기준·적용 사유·변경 이력을 DB에 저장했습니다.');
+   });
+ }
+ async function monthlyMapActivity(activityId,studentId){
+  const d=await api('/api/academic-progress/'+studentId);
+  const existing=d.activities.find(x=>x.id===activityId);
+  if(!existing)throw Error('부서 인정 실적이 아닙니다.');
+  if(document.querySelector('#modal')?.open)document.querySelector('#modal').close();
+  const options=['','P1','P2','P3','P4','P5','P6'].map(k=>'<option value="'+k+'" '+
+   ((existing.phase||'')===k?'selected':'')+'>'+(k||'단계 미확정')+'</option>').join('');
+  const labels={M:'융합',I:'현장',R:'연구',A:'자기주도·공동체',E:'기초소양·시민의식'};
+  openModal('실적 '+activityId+' · 부서 단계·복수역량 연계',
+   '<form><p class="sub">'+esc(existing.title)+' · '+esc(existing.activity_day)+
+    '<br>학생 제안 '+esc(existing.proposed_stage?'P'+existing.proposed_stage:'미정')+
+    ' / 부서 확정 '+esc(existing.phase||'미정')+'</p>'+
+    '<label>부서 인정 P단계<select name="phase">'+options+'</select></label>'+
+    '<fieldset style="padding:12px;border:1px solid #dae4eb;border-radius:8px"><legend>MIRAE 복수 영역</legend>'+
+    Object.entries(labels).map(([k,v])=>'<label class="check"><input type="checkbox" name="mirae_codes" value="'+k+'" '+
+     (existing.mirae_codes.includes(k)?'checked':'')+'> '+k+' · '+esc(v)+'</label>').join('')+'</fieldset>'+
+    '<label>연계/변경 근거<textarea name="reason" maxlength="600" required></textarea></label>'+formActions,
+    async f=>{
+     await api('/api/academic-activity-mapping/'+activityId,{method:'PUT',body:JSON.stringify({
+      phase:f.get('phase')||null,mirae_codes:f.getAll('mirae_codes'),reason:f.get('reason')})});
+     toast('6P 단계 및 MIRAE 연계를 저장했습니다. 재집계가 즉시 적용됩니다.');
+    });
+ }
+ async function monthlyDecideStage(studentId,phase){
+  openModal('부서 '+phase+' 최종 판정 · 학생 '+studentId,
+   '<form><label>심의결과<select name="decision">'+
+    [['achieved','달성'],['supplement','보완'],['deferred','유예'],['not_achieved','미달성']].map(([v,n])=>
+     '<option value="'+v+'">'+n+'</option>').join('')+'</select></label>'+
+    '<label class="check"><input type="checkbox" name="manual_exception" value="yes">기본 요건 미충족 예외 승인</label>'+
+    '<label>심의 사유·근거<textarea name="reason" maxlength="600" required></textarea></label>'+
+    '<p class="micro">기준 미충족 상태의 달성 확정은 명시적 예외 승인과 상세 사유가 필요합니다. 이후 실적·기준 변경은 재검토로 표시됩니다.</p>'+
+    formActions,async f=>{
+     await api('/api/academic-stage-decisions',{method:'POST',body:JSON.stringify({
+      student_id:studentId,phase,decision:f.get('decision'),reason:f.get('reason'),
+      manual_exception:f.get('manual_exception')==='yes'})});
+     toast('최종 판정·근거·처리자 이력을 저장했습니다.');
+    });
  }
  async function monthlyAssignReviewers(){
   const [users,assignments]=await Promise.all([api('/api/users'),api('/api/reviewer-assignments')]);
@@ -218,5 +375,6 @@ export function makeMonthlyUI(h){
    });
  }
  return {page,actions:{newMonthlyActivity,newMonthlyReport,editMonthlyReport,submitMonthlyReport,
-  reviewMonthlyReport,monthlyDetail,monthlyRecognition,monthlyProgress,monthlyAssignReviewers}};
+  reviewMonthlyReport,monthlyDetail,monthlyRecognition,monthlyProgress,monthlyExportProgress,
+  monthlyChooseStudent,monthlyEditProfile,monthlyEditCriteria,monthlyMapActivity,monthlyDecideStage,monthlyAssignReviewers}};
 }
