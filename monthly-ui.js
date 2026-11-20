@@ -362,7 +362,7 @@ export function makeMonthlyUI(h){
    try{
     const p=params();
     const data=await api(base+'?'+p.toString());
-    const phases=data.phase_codes.map(k=>({label:k,value:data.current.phases[k]}));
+    const phases=data.phase_codes.filter(k=>['P3','P4','P5','P6'].includes(k)).map(k=>({label:k,value:data.current.phases[k]}));
     const competences=data.competencies.map(k=>({
      label:k.code+' · '+k.label,value:data.current.competencies[k.code]}));
     const keys=data.competencies.map(c=>c.code);
@@ -380,6 +380,7 @@ export function makeMonthlyUI(h){
       '<section class="research-chart-card"><h3>현재 MIRAE 5개 영역 분포</h3>'+
        '<div id="acad-mirae-bars" class="research-chart chart-bars" role="img" aria-label="MIRAE 영역별 인정 건수"></div></section>'+
       '<section class="research-chart-card"><h3>현재 6P 단계별 인정 실적</h3>'+
+       '<p class="chart-note">P3~P6 인정 실적 · P1·P2는 배치·계획 증빙으로 별도 판정</p>'+
        '<div id="acad-phase-bars" class="research-chart chart-bars" role="img" aria-label="단계별 인정 건수와 부족 현황"></div></section>'+
      '</div>'+
      '<section class="research-chart-card"><h3>선택 기간의 '+(data.filters.group_by==='month'?'월별':'학기별')+
