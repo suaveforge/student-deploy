@@ -343,7 +343,7 @@ export function makeMonthlyUI(h){
   const initial=await api(base);
   // Read-only academic result. The illustrative sample is never posted to DB.
   const progress=studentId==='department'?null:await api('/api/academic-progress/'+studentId);
-  let sample=false;
+  let sample=studentId==='department'&&initial.current.unique_activities===0; // synthetic visuals only when official department count is zero
   if(document.querySelector('#modal')?.open)document.querySelector('#modal').close();
   openModal('6P·MIRAE 실적 현황 · 기간 비교',
    '<div class="form-grid" id="acad-viz-filters">'+
@@ -353,7 +353,7 @@ export function makeMonthlyUI(h){
      '<option value="semester">학기별</option></select></label></div>'+
    '<div class="inline-btns chart-toolbar"><button class="btn primary" id="acad-viz-apply" type="button">기간 비교</button>'+
     '<button class="btn" id="acad-viz-toggle" type="button" aria-pressed="false">별도 시연 예시 보기</button>'+
-    '<a class="btn" id="acad-viz-print" target="_blank" rel="noopener noreferrer">공식 결과 인쇄/PDF</a></div>'+
+    '<a class="btn" id="acad-viz-print" target="_blank" rel="noopener noreferrer">인쇄/PDF</a></div>'+
    '<div id="acad-viz-output" aria-live="polite">조회 중...</div>');
   document.querySelector('#modal').classList.add('academic-viz');
   const container=document.querySelector('#modal-body');
@@ -398,14 +398,12 @@ export function makeMonthlyUI(h){
     f('acad-viz-toggle').textContent=sample?'공식 집계로 돌아가기':'별도 시연 예시 보기';
     f('acad-viz-toggle').setAttribute('aria-pressed',String(sample));
     const print=f('acad-viz-print');
-    if(sample){print.removeAttribute('href');print.setAttribute('aria-disabled','true');
-     print.classList.add('chart-print-disabled');print.title='가상 예시는 공식 인쇄물로 출력하지 않습니다.';}
-    else{print.href=origin+base+'/print?'+p.toString();print.removeAttribute('aria-disabled');
-     print.classList.remove('chart-print-disabled');print.removeAttribute('title');}
+    if(sample){print.href='#';print.removeAttribute('aria-disabled');print.classList.remove('chart-print-disabled');print.textContent='가상 예시 인쇄/PDF';}
+    else{print.href=origin+base+'/print?'+p.toString();print.removeAttribute('aria-disabled');print.classList.remove('chart-print-disabled');print.textContent='공식 결과 인쇄/PDF';}
     disposeCharts(f('acad-viz-output'));
     const ready=data.readiness||{};
     const summary=sample?
-     '<div class="chart-sample-warning" role="status"><b>가상 시연 전용 예시</b> · 실제 학생 데이터/부서 공식 인정 아님 · 서버 DB에 저장되지 않음. 4명·8건의 예시로 차트와 탐색 기능을 확인합니다.</div>':
+     '<div class="chart-sample-warning" role="status"><b>가상 시연 전용 예시</b> · 실제 학생 데이터/부서 공식 인정 아님 · 서버 DB에 저장되지 않음. 40명·120건의 예시로 차트와 탐색 기능을 확인합니다.</div>':
      '<div class="chart-readiness"><b>공식 인정 실적 '+data.current.unique_activities+'건</b>'+
       ' · 활동 등록 '+(ready.entered_activities??0)+'건'+
       ' · 교수 확인 완료 보고서 '+(ready.reviewed_reports??0)+'건'+
@@ -460,7 +458,21 @@ export function makeMonthlyUI(h){
     });
    }catch(e){toast('시각화 오류: '+e.message);}
   };
-  f('acad-viz-apply').addEventListener('click',render);
+  f('acad-viz-print').addEventListener('click',event=>{
+    if(!sample)return;
+    event.preventDefault();
+    const popup=window.open('','_blank');
+    if(!popup){toast('인쇄 창을 허용해 주세요.');return;}
+    const output=f('acad-viz-output');
+    const svgs=Array.from(output.querySelectorAll('svg')).map(n=>'<div class="plot">'+n.outerHTML+'</div>').join('');
+    const tables=Array.from(output.querySelectorAll('table')).map(n=>n.outerHTML).join('');
+    const title='연세대학교 미래캠퍼스 6P·MIRAE 가상 시연 보고서';
+    const style='@page{size:A4 landscape;margin:12mm}body{font:12px Arial,sans-serif;color:#172c40;margin:0}h1{font-size:19px}.notice{padding:10px;background:#fff3d9;border:1px solid #e6bc65;font-weight:bold}.plots{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:12px}.plot{border:1px solid #dce5ee;padding:8px;break-inside:avoid}.plot svg{width:100%!important;height:185px!important}table{border-collapse:collapse;width:100%;font-size:9px;margin:12px 0}td,th{border:1px solid #ccd8e2;padding:5px}';
+    popup.document.open();
+    popup.document.write('<!doctype html><html lang="ko"><head><meta charset="utf-8"><title>'+title+'</title><style>'+style+'</style></head><body><h1>'+title+'</h1><p class="notice">가상 시연 자료 · 학생 40명 / 활동 120건 · 실제 대학 실적 및 공식 증빙 아님</p><p>선택 기간: '+esc(f('acad-viz-from').value)+' ~ '+esc(f('acad-viz-to').value)+' · '+esc(f('acad-viz-group').selectedOptions[0].textContent)+'</p><div class="plots">'+svgs+'</div><h2>기간별 비교표</h2>'+tables+'</body></html>');
+    popup.document.close();popup.focus();
+   });
+   f('acad-viz-apply').addEventListener('click',render);
   f('acad-viz-toggle').addEventListener('click',()=>{sample=!sample;render()});
   await render();
  }
