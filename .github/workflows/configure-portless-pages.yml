@@ -1,0 +1,25 @@
+name: W01 configure portless GitHub Pages domain
+on:
+  push:
+    branches: [main]
+    paths: [CNAME, .github/workflows/configure-portless-pages.yml]
+  workflow_dispatch:
+permissions:
+  pages: write
+  contents: read
+jobs:
+  configure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Register exact student domain for existing Pages main root
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -Eeuo pipefail
+          test "$(cat CNAME)" = "student.suaveforge.com"
+          gh api -X PUT "/repos/$GITHUB_REPOSITORY/pages" -f cname=student.suaveforge.com
+          current=$(gh api "/repos/$GITHUB_REPOSITORY/pages" --jq '.cname')
+          test "$current" = student.suaveforge.com
+          echo STUDENT_PAGES_CUSTOM_DOMAIN_REGISTERED=PASS
