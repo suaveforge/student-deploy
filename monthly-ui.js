@@ -116,6 +116,37 @@ export function makeMonthlyUI(h){
    toast('기존 보고서에 수정 내용이 연결됐습니다.');
   });
  }
+ async function monthlyAddEvidence(rid){
+  if(document.querySelector('#modal')?.open)document.querySelector('#modal').close();
+  openModal('월별 보고서 '+rid+' · 증빙 첨부',
+   '<form><label>PDF·PNG·JPG·TXT 파일 (최대 2MB/개, 총 5개)'+
+    '<input type="file" name="evidence_file" accept=".pdf,.png,.jpg,.jpeg,.txt" required></label>'+
+    '<p class="micro">보고서 임시저장 또는 보완 요청 중에만 추가·삭제할 수 있습니다.</p>'+
+    formActions,async (_f,form)=>{
+     const file=form.querySelector('input[type=file]').files[0];
+     if(!file)throw Error('파일을 선택하세요.');
+     if(file.size<1||file.size>2*1024*1024)throw Error('파일당 2MB 이내로 선택하세요.');
+     const ext=file.name.split('.').pop().toLowerCase();
+     const mime={pdf:'application/pdf',png:'image/png',jpg:'image/jpeg',
+      jpeg:'image/jpeg',txt:'text/plain'}[ext];
+     if(!mime)throw Error('PDF·PNG·JPG·TXT만 첨부할 수 있습니다.');
+     const bytes=new Uint8Array(await file.arrayBuffer());let binary='';
+     for(let i=0;i<bytes.length;i+=8192)
+      binary+=String.fromCharCode(...bytes.subarray(i,i+8192));
+     const base64=btoa(binary);
+     await api('/api/monthly-reports/'+rid+'/attachments',{method:'POST',
+      body:JSON.stringify({name:file.name,mime,base64})});
+     toast('증빙파일이 보고서에 저장되어 두 교수의 열람 대상에 포함됐습니다.');
+    });
+ }
+ async function monthlyDeleteEvidence(evidenceId){
+  if(!confirm('아직 제출하지 않은 증빙파일을 삭제하시겠습니까?'))return;
+  try{
+   await api('/api/monthly-evidence/'+evidenceId,{method:'DELETE'});
+   if(document.querySelector('#modal')?.open)document.querySelector('#modal').close();
+   toast('증빙파일을 삭제했습니다.');await loadView();
+  }catch(e){toast('증빙 삭제 오류: '+e.message);}
+ }
  async function submitMonthlyReport(rid){
   if(!confirm('현재 제출본을 두 교수에게 동시에 전달하고, 확인 이력을 새로 시작할까요?'))return;
   try{
@@ -161,6 +192,20 @@ export function makeMonthlyUI(h){
   });
   h+=panel('실적별 부서 처리',table(['연결 실적','유형','부서 인정','사유','처리'],rows),
    '두 교수 모두 확인 완료 후에만 실적 인정이 가능합니다.');
+  const base=window.STUDENT_API_BASE||'';
+  const files=(r.attachments||[]).map(x=>{
+   const safe=base+'/api/monthly-evidence/'+x.id;
+   return [esc(x.filename),esc(x.mime),Number(x.file_size).toLocaleString('ko-KR')+' bytes',
+    '<a class="link" target="_blank" rel="noopener noreferrer" href="'+esc(safe)+'">다운로드</a>'+
+     (role==='student'&&['draft','revision'].includes(r.status)?
+      ' <button class="link" onclick="app.monthlyDeleteEvidence('+x.id+')">삭제</button>':'')];
+  });
+  h+=panel('보고서 첨부 증빙',table(['파일명','형식','크기','열람'],files,'첨부된 증빙이 없습니다.'),
+   '본인·멘토교수·지도교수·부서만 열람할 수 있습니다. 제출 후에는 파일 임의 변경이 차단됩니다.');
+  h+='<div class="inline-btns">'+
+   '<a class="btn" target="_blank" rel="noopener noreferrer" href="'+esc(base+'/api/monthly-reports/'+r.id+'/print')+'">보고서 인쇄 / PDF 저장</a>'+
+   (role==='student'&&['draft','revision'].includes(r.status)?
+    '<button class="btn" onclick="app.monthlyAddEvidence('+r.id+')">증빙 첨부</button>':'')+'</div>';
   if(r.review_history.length)
    h+=panel('제출본별 교수 확인 이력',table(['회차','담당','결과','의견'],r.review_history.map(x=>[
     esc(x.revision+'차'),esc(x.reviewer_role==='mentor'?'멘토':'지도'),
@@ -442,6 +487,6 @@ export function makeMonthlyUI(h){
    });
  }
  return {page,actions:{newMonthlyActivity,newMonthlyReport,editMonthlyReport,submitMonthlyReport,
-  reviewMonthlyReport,monthlyDetail,monthlyRecognition,monthlyProgress,monthlyExportProgress,
+  reviewMonthlyReport,monthlyDetail,monthlyAddEvidence,monthlyDeleteEvidence,monthlyRecognition,monthlyProgress,monthlyExportProgress,
   monthlyChooseStudent,monthlyAdminOverview,monthlyEditProfile,monthlyEditCriteria,monthlyMapActivity,monthlyDecideStage,monthlyAssignReviewers}};
 }
