@@ -48,13 +48,13 @@ api=matching(initial,'api-student')
 if len(api)!=1 or str(api[0].get('type','')).upper()!='A':raise RuntimeError('API_STUDENT_DNS_MISSING_REFUSE_CUTOVER')
 if len(student)!=1:raise RuntimeError('STUDENT_DNS_UNEXPECTED_RECORD_COUNT')
 entry=student[0]
-if str(entry.get('type','')).upper()=='CNAME' and str(entry.get('address','')).lower().rstrip('.')=='suaveforge.github.io':
+if str(entry.get('type','')).upper()=='CNAME' and str(entry.get('cname','')).lower().rstrip('.')=='suaveforge.github.io':
     print('STUDENT_PAGES_CNAME=ALREADY_SET')
     raise SystemExit(0)
 if str(entry.get('type','')).upper()!='A' or str(entry.get('address',''))!=str(api[0].get('address','')):
     raise RuntimeError('STUDENT_EXISTING_A_MISMATCH_REFUSE_CUTOVER')
 original={'type':'A','name':'student','address':str(entry['address'])}
-target={'type':'CNAME','name':'student','address':'suaveforge.github.io'}
+target={'type':'CNAME','name':'student','cname':'suaveforge.github.io'}
 old_deleted=False
 try:
     status=request('DELETE',[original])
@@ -64,7 +64,7 @@ try:
     status=request('PUT',{'force':False,'items':[{**target,'ttl':600}]})
     if status!=204:raise RuntimeError('STUDENT_PAGES_CNAME_WRITE_HTTP_'+str(status))
     result=matching(records(),'student')
-    if len(result)!=1 or result[0].get('type','').upper()!='CNAME' or str(result[0].get('address','')).lower().rstrip('.')!='suaveforge.github.io':
+    if len(result)!=1 or result[0].get('type','').upper()!='CNAME' or str(result[0].get('cname','')).lower().rstrip('.')!='suaveforge.github.io':
         raise RuntimeError('STUDENT_PAGES_CNAME_READBACK_FAILED')
     print('STUDENT_PAGES_CNAME_READBACK=PASS')
     print('STUDENT_ONLY_DNS_CHANGED=YES')
@@ -72,7 +72,7 @@ except Exception:
     if old_deleted:
         try:
             now=matching(records(),'student')
-            if len(now)==1 and now[0].get('type','').upper()=='CNAME' and str(now[0].get('address','')).lower().rstrip('.')=='suaveforge.github.io':
+            if len(now)==1 and now[0].get('type','').upper()=='CNAME' and str(now[0].get('cname','')).lower().rstrip('.')=='suaveforge.github.io':
                 request('DELETE',[target])
             if not matching(records(),'student'):
                 request('PUT',{'force':False,'items':[{**original,'ttl':600}]})
