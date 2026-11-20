@@ -28,3 +28,11 @@ Source workflow deploy-student-server123.yml owns application release. If build 
 - Real headed Chrome 13-step/FFmpeg verified run 44580634302 **SUCCESS**, 57.8sec MP4 artifact 14557908305. Second success 44581356646 58.534sec MP4 artifact 14559690367. Both from synthetic records. Recording flow includes real Chrome address bar and OS cursor, persisted SQLite and admin/professor/student workflows.
 - Experimental native window CDP maximization broke 44582056829 (failed during login), reverted at source 7ee9030b0b0a89eb860dc9081c03854e49c1be0b; ensure rollback release and its E2E test PASS before claiming latest head. Old verified MP4 artifacts remain valid.
 - Still incomplete: original G2B full attachment, physical mobile browser QA, public demo access hardening, cosmetic full-frame screenshot QA. Do not mark official school service / work W02-W05.
+
+
+## 2026-11-20 NO-CADDY OVERRIDE — latest authoritative user direction
+
+- User forbids Caddy for new Student deployment due to prior exposure; independent high-port backend plus Nginx (or equivalent non-Caddy) HTTPS is required. The older document above is *historical evidence only*, not architectural approval.
+- Source main `22ab4ea9804859383b1eca85c88f85a6b2ee90bc` removes the automatic `student-server123-domain.yml` Caddy reapply workflow. This deploy repository removes the now-obsolete Caddy deployment script. The existing live ingress remains untouched, because sharing TCP 443 with other services makes unilateral replacement unsafe.
+- Read-only live server123 inventory, run `44656674263` **SUCCESS**: 80/443/18787/18443 in use; 19443/28443 free on loopback; Nginx executable not visible in runner namespace; Docker daemon usable; Student 18787 health PASS; existing HTTPS health HTTP 200.
+- Next: identify approved Nginx TLS runtime/certificate path and independent 443 routing or separate IP/host; stage Student-only high-port TLS; verify certificate, auth and Chrome MP4; cut over ONLY when other services are protected and rollback is proven. Do not claim TLS migration complete, do not change unrelated production services.
