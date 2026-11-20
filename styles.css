@@ -31,3 +31,26 @@ dialog.academic-viz #modal-body{max-height:76vh}
  .research-chart.chart-trend{height:310px}
  .research-chart.chart-matrix{height:280px}
 }
+
+/* Official recognition, explicit empty state, and isolated chart showcase. */
+.chart-readiness,.chart-sample-warning,.chart-empty-summary{
+ border:1px solid #dbe6ef;border-radius:13px;padding:14px 17px;margin:9px 0 16px;
+ background:#f7fafc;color:#36516c;font-size:12px;line-height:1.7
+}
+.chart-readiness b,.chart-sample-warning b,.chart-empty-summary b{font-size:14px;color:#1f3c57}
+.chart-readiness p,.chart-empty-summary p{margin:4px 0 0;font-size:12px;color:#61788e}
+.chart-sample-warning{border:1px solid #d2ad75;background:#fff8eb;color:#815522}
+.chart-sample-warning b{color:#795017}
+.chart-empty-summary{border-style:dashed;background:#f9fbfd;text-align:center;padding:21px}
+.chart-empty-summary b{font-size:17px}
+.chart-toolbar{margin:9px 0 15px}
+.chart-print-disabled{opacity:.4;pointer-events:none;cursor:not-allowed}
+.chart-period-heatmap{height:330px}
+.chart-evidence{margin:15px 0}
+.chart-evidence h4{font-size:13px;margin:16px 0 10px;color:#294e69}
+.chart-proof-actions{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0}
+.chart-proof-actions .btn{min-width:46px;padding:6px 10px}
+.chart-evidence .table-scroll{max-height:290px}
+.chart-proof-empty{font-size:12px;color:#6c8296;padding:13px;background:#f7fafd;border-radius:9px}
+.chart-note{font-size:11px;color:#647f91}
+@media(max-width:740px){.chart-period-heatmap{height:295px}.chart-proof-actions{gap:5px}.chart-proof-actions .btn{min-width:42px;font-size:11px}.chart-readiness,.chart-sample-warning{padding:12px}}
