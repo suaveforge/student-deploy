@@ -1,4 +1,4 @@
-import {loadECharts,renderHorizontal,renderPhaseProgress,renderMiraeTrend,renderPeriodHeatmap,renderReviewStack,renderPhaseHeatmap,renderMiraeMatrix,disposeCharts} from './charts-ui.js';
+import {loadECharts,renderHorizontal,renderPhaseProgress,renderMiraeTrend,renderMiraeFocus,renderPeriodHeatmap,renderReviewStack,renderPhaseHeatmap,renderMiraeMatrix,disposeCharts} from './charts-ui.js';
 import {sampleVisualization} from './academic-showcase.js';
 // W01 RFP #4–#7: operational proof UI on the existing signed-in workspace.
 // Official university semester exceptions and MIRAE weighted standards remain unconfigured.
@@ -343,7 +343,8 @@ export function makeMonthlyUI(h){
   const initial=await api(base);
   // Read-only academic result. The illustrative sample is never posted to DB.
   const progress=studentId==='department'?null:await api('/api/academic-progress/'+studentId);
-  let sample=false;
+  let focusCode='M';
+  let sample=studentId==='department'&&initial.current.unique_activities===0; // synthetic visuals only when official department count is zero
   if(document.querySelector('#modal')?.open)document.querySelector('#modal').close();
   openModal('6P·MIRAE 실적 현황 · 기간 비교',
    '<div class="form-grid" id="acad-viz-filters">'+
@@ -353,7 +354,7 @@ export function makeMonthlyUI(h){
      '<option value="semester">학기별</option></select></label></div>'+
    '<div class="inline-btns chart-toolbar"><button class="btn primary" id="acad-viz-apply" type="button">기간 비교</button>'+
     '<button class="btn" id="acad-viz-toggle" type="button" aria-pressed="false">별도 시연 예시 보기</button>'+
-    '<a class="btn" id="acad-viz-print" target="_blank" rel="noopener noreferrer">공식 결과 인쇄/PDF</a></div>'+
+    '<a class="btn" id="acad-viz-print" target="_blank" rel="noopener noreferrer">인쇄/PDF</a></div>'+
    '<div id="acad-viz-output" aria-live="polite">조회 중...</div>');
   document.querySelector('#modal').classList.add('academic-viz');
   const container=document.querySelector('#modal-body');
@@ -398,14 +399,12 @@ export function makeMonthlyUI(h){
     f('acad-viz-toggle').textContent=sample?'공식 집계로 돌아가기':'별도 시연 예시 보기';
     f('acad-viz-toggle').setAttribute('aria-pressed',String(sample));
     const print=f('acad-viz-print');
-    if(sample){print.removeAttribute('href');print.setAttribute('aria-disabled','true');
-     print.classList.add('chart-print-disabled');print.title='가상 예시는 공식 인쇄물로 출력하지 않습니다.';}
-    else{print.href=origin+base+'/print?'+p.toString();print.removeAttribute('aria-disabled');
-     print.classList.remove('chart-print-disabled');print.removeAttribute('title');}
+    if(sample){print.href='#';print.removeAttribute('aria-disabled');print.classList.remove('chart-print-disabled');print.textContent='가상 예시 인쇄/PDF';}
+    else{print.href=origin+base+'/print?'+p.toString();print.removeAttribute('aria-disabled');print.classList.remove('chart-print-disabled');print.textContent='공식 결과 인쇄/PDF';}
     disposeCharts(f('acad-viz-output'));
     const ready=data.readiness||{};
     const summary=sample?
-     '<div class="chart-sample-warning" role="status"><b>가상 시연 전용 예시</b> · 실제 학생 데이터/부서 공식 인정 아님 · 서버 DB에 저장되지 않음. 4명·8건의 예시로 차트와 탐색 기능을 확인합니다.</div>':
+     '<div class="chart-sample-warning" role="status"><b>가상 시연 전용 예시</b> · 실제 학생 데이터/부서 공식 인정 아님 · 서버 DB에 저장되지 않음. 40명·120건의 예시로 차트와 탐색 기능을 확인합니다.</div>':
      '<div class="chart-readiness"><b>공식 인정 실적 '+data.current.unique_activities+'건</b>'+
       ' · 활동 등록 '+(ready.entered_activities??0)+'건'+
       ' · 교수 확인 완료 보고서 '+(ready.reviewed_reports??0)+'건'+
@@ -436,16 +435,37 @@ export function makeMonthlyUI(h){
       '<div id="acad-proof-actions" class="chart-proof-actions">'+
        ['M','I','R','A','E'].map(code=>'<button class="btn" type="button" data-evidence-type="mirae" data-code="'+code+'">'+code+'</button>').join('')+
        ['P3','P4','P5','P6'].map(code=>'<button class="btn" type="button" data-evidence-type="phase" data-code="'+code+'">'+code+'</button>').join('')+
-      '</div><div id="acad-proof-output" aria-live="polite"><p class="micro">영역·단계·히트맵을 선택하면 해당 인정 활동을 확인할 수 있습니다.</p></div></section>'+
+      '</div><h4 id="acad-focus-heading">MIRAE 선택 영역 변화</h4>'+
+      '<p id="acad-focus-summary" class="chart-note">영역을 선택하면 기간별 추이가 변화합니다.</p>'+
+      '<div id="acad-focus-graph" class="research-chart chart-trend" role="img" aria-label="선택 MIRAE 영역의 기간별 변화"></div>'+
+      '<div id="acad-proof-output" aria-live="polite"><p class="micro">영역·단계·히트맵을 선택하면 해당 인정 활동을 확인할 수 있습니다.</p></div></section>'+
      panel('기간별 MIRAE·6P 비교 도표',
       table(['기간','인정 활동',...data.competencies.map(x=>x.code),
        ...data.phase_codes],tabular))+
      '<p class="micro">'+data.notes.map(esc).join(' ')+'</p>';
-    f('acad-proof-actions').querySelectorAll('[data-evidence-type]').forEach(el=>
-     el.addEventListener('click',()=>showProof(data,el.dataset.evidenceType,el.dataset.code)));
     await loadECharts();
+    const selectFocus=(code,period=null)=>{
+     focusCode=code;
+     const comp=data.competencies.find(c=>c.code===code);
+     const selectedCount=data.selected_period.competencies[code]||0;
+     f('acad-focus-heading').textContent=code+' · '+(comp?.label||code)+' 영역별 변화';
+     f('acad-focus-summary').textContent='선택 기간 '+selectedCount+'건 · 월별/학기별 추이와 근거를 함께 확인할 수 있습니다.';
+     f('acad-proof-actions').querySelectorAll('[data-evidence-type="mirae"]').forEach(button=>{
+      const on=button.dataset.code===code;
+      button.classList.toggle('primary',on);
+      button.setAttribute('aria-pressed',String(on));
+     });
+     renderMiraeTrend('acad-trend',data.series,data.competencies,code);
+     renderMiraeFocus('acad-focus-graph',data.series,data.competencies,code);
+     showProof(data,'mirae',code,period);
+    };
+    f('acad-proof-actions').querySelectorAll('[data-evidence-type]').forEach(el=>
+     el.addEventListener('click',()=>{
+      if(el.dataset.evidenceType==='mirae')selectFocus(el.dataset.code);
+      else showProof(data,'phase',el.dataset.code);
+     }));
     renderHorizontal('acad-mirae-bars',competences,
-     {onSelect:item=>showProof(data,'mirae',item.code)});
+     {onSelect:item=>selectFocus(item.code)});
     if(progress&&!sample){
      const stages=progress.stages.filter(x=>['P3','P4','P5','P6'].includes(x.phase)).map(x=>({
       phase:x.phase,recognized:Object.values(x.counted).reduce((n,v)=>n+Number(v||0),0),
@@ -454,12 +474,66 @@ export function makeMonthlyUI(h){
       {onSelect:item=>showProof(data,'phase',item.phase)});
     }else renderHorizontal('acad-phase-bars',phases,
      {onSelect:item=>showProof(data,'phase',item.code)});
-    renderMiraeTrend('acad-trend',data.series,data.competencies);
     renderPeriodHeatmap('acad-period-heatmap',data.series,data.competencies,{
-     onSelect:({code,period})=>showProof(data,'mirae',code,period)
+     onSelect:({code,period})=>selectFocus(code,period)
     });
+    selectFocus(focusCode);
    }catch(e){toast('시각화 오류: '+e.message);}
   };
+  f('acad-viz-print').addEventListener('click',event=>{
+   if(!sample)return; // Official print continues to use the authenticated server endpoint.
+   event.preventDefault();
+   const popup=window.open('','_blank');
+   if(!popup){toast('인쇄 창을 허용해 주세요.');return;}
+   const output=f('acad-viz-output');
+   // ECharts SVGs cannot be pasted into a new document with forced CSS height:
+   // their internal viewports and chart layers then overlap neighbouring tables.
+   // Snapshots render as self-contained images with their own preserved viewBox.
+   const charts=[
+    ['acad-mirae-bars','MIRAE 5개 영역 실적'],
+    ['acad-phase-bars','6P 단계별 실적'],
+    ['acad-trend','기간별 MIRAE 추세'],
+    ['acad-period-heatmap','기간 × MIRAE 영역'],
+    ['acad-focus-graph','선택 영역별 변화']
+   ];
+   const plots=charts.map(([id,label])=>{
+    const svg=output.querySelector('#'+id+' svg');
+    if(!svg)return '';
+    const clone=svg.cloneNode(true);
+    const width=Number(svg.getAttribute('width'))||svg.getBoundingClientRect().width||800;
+    const height=Number(svg.getAttribute('height'))||svg.getBoundingClientRect().height||280;
+    clone.setAttribute('viewBox','0 0 '+width+' '+height);
+    clone.setAttribute('xmlns','http://www.w3.org/2000/svg');
+    const source='data:image/svg+xml;charset=utf-8,'+
+     encodeURIComponent(new XMLSerializer().serializeToString(clone));
+    return '<figure class="plot"><figcaption>'+esc(label)+
+     '</figcaption><img loading="eager" alt="'+esc(label)+'" src="'+source+'"></figure>';
+   }).filter(Boolean).join('');
+   const comparison=output.querySelector('table');
+   const tables=comparison?comparison.outerHTML:'';
+   const title='연세대학교 미래캠퍼스 6P·MIRAE 가상 시연 보고서';
+   const style='@page{size:A4 landscape;margin:14mm}'+
+    '*{box-sizing:border-box}body{font-family:Pretendard,Arial,sans-serif;color:#172c40;margin:0;padding:16px;background:#fff}'+
+    'h1{font-size:21px;margin:0 0 12px}h2{font-size:17px;margin:0 0 10px}'+
+    '.notice{padding:12px;background:#fff6e5;border:1px solid #e6bc65;font-weight:bold;margin:12px 0}'+
+    '.plots{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;align-items:start}'+
+    '.plot{min-width:0;height:262px;margin:0;padding:10px;border:1px solid #dce5ee;overflow:hidden;break-inside:avoid;page-break-inside:avoid}'+
+    '.plot figcaption{font-size:13px;font-weight:bold;line-height:22px;height:24px}'+
+    '.plot img{display:block;width:100%;height:218px;object-fit:contain;object-position:center center}'+
+    '.comparison{break-before:page;page-break-before:always;padding-top:8px}'+
+    'table{table-layout:fixed;border-collapse:collapse;width:100%;font-size:10px;margin:10px 0}'+
+    'td,th{border:1px solid #cddae4;padding:7px 5px;text-align:center;overflow-wrap:anywhere}'+
+    'th{background:#eff4fa}p.meta{font-size:12px;color:#536a80}';
+   popup.document.open();
+   popup.document.write('<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>'+title+'</title><style>'+style+
+    '</style></head><body><h1>'+title+'</h1><p class="notice">가상 시연 자료 · 학생 40명 / 활동 120건 · 실제 대학 실적 및 공식 증빙 아님</p>'+
+    '<p class="meta">선택 기간: '+esc(f('acad-viz-from').value)+' ~ '+esc(f('acad-viz-to').value)+
+    ' · '+esc(f('acad-viz-group').selectedOptions[0].textContent)+'</p><div class="plots">'+plots+
+    '</div><section class="comparison"><h2>기간별 MIRAE·6P 비교표</h2>'+tables+
+    '</section></body></html>');
+   popup.document.close();
+   popup.focus();
+  });
   f('acad-viz-apply').addEventListener('click',render);
   f('acad-viz-toggle').addEventListener('click',()=>{sample=!sample;render()});
   await render();
