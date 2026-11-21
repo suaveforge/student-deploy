@@ -118,7 +118,7 @@ export function renderPhaseProgress(id,stages,{onSelect}={}){
  }
  return mounted;
 }
-export function renderMiraeTrend(id,periods,competencies){
+export function renderMiraeTrend(id,periods,competencies,selectedCode=null){
  const names=periods.map(x=>x.label);
  if(!periods.length||periods.every(p=>competencies.every(c=>!(Number(p.competencies?.[c.code])>0))))
   return renderEmptyMetric(id,{title:'선택 기간 실적 없음',detail:'월·학기별 인정 활동이 등록되면 추이가 표시됩니다.'});
@@ -131,10 +131,37 @@ export function renderMiraeTrend(id,periods,competencies){
   yAxis:{type:'value',min:0,minInterval:1,axisLabel:{color:'#8190A3'},splitLine:{lineStyle:{color:'#E9EFF4'}}},
   dataZoom:periods.length>12?[{type:'inside',start:0,end:100}]:[],
   series:competencies.map((c,i)=>({
-   name:c.label||c.code,type:'line',smooth:0.16,showSymbol:periods.length<=12,
-   symbolSize:6,lineStyle:{width:2.5},emphasis:{focus:'series'},
-   areaStyle:{opacity:0.09},data:periods.map(x=>Number(x.competencies[c.code])||0)}))
+   name:c.label||c.code,type:'line',smooth:0.24,showSymbol:periods.length<=12,
+   symbolSize:selectedCode===c.code?10:5,
+   lineStyle:{width:(!selectedCode||selectedCode===c.code)?4:1.5,opacity:(!selectedCode||selectedCode===c.code)?1:.14},
+   itemStyle:{opacity:(!selectedCode||selectedCode===c.code)?1:.18},
+   emphasis:{focus:'series'},
+   areaStyle:{opacity:!selectedCode?0.07:(selectedCode===c.code?0.25:0)},
+   data:periods.map(x=>Number(x.competencies[c.code])||0)}))
  },'기간별 MIRAE 인정 실적');
+}
+export function renderMiraeFocus(id,periods,competencies,selectedCode){
+ const competency=competencies.find(c=>c.code===selectedCode);
+ if(!competency||!periods.length)return renderEmptyMetric(id);
+ const values=periods.map(p=>Number(p.competencies?.[selectedCode])||0);
+ const ec=window.echarts;
+ return mount(id,{
+  animation:true,animationDuration:700,animationDurationUpdate:650,
+  title:{text:selectedCode+' · '+competency.label+' 영역 변화',left:14,top:7,
+   textStyle:{fontSize:14,color:'#1C3852',fontWeight:700}},
+  grid:{left:43,right:22,top:55,bottom:48},
+  tooltip:{trigger:'axis',axisPointer:{type:'cross'},valueFormatter:v=>v+'건'},
+  xAxis:{type:'category',boundaryGap:false,data:periods.map(p=>p.label),
+    axisLabel:{color:'#536A84',hideOverlap:true,rotate:periods.length>8?25:0}},
+  yAxis:{type:'value',min:0,minInterval:1,splitLine:{lineStyle:{color:'#E7EFF5'}}},
+  series:[{name:competency.label,type:'line',smooth:.42,symbol:'circle',symbolSize:10,
+   data:values,label:{show:periods.length<=8,position:'top',formatter:'{c}건',color:'#2D5673',fontWeight:700},
+   lineStyle:{width:4,color:'#236B95'},
+   itemStyle:{color:'#138A7D',borderColor:'#fff',borderWidth:2},
+   areaStyle:{opacity:.26,color:ec?.graphic?.LinearGradient?
+    new ec.graphic.LinearGradient(0,0,0,1,[{offset:0,color:'#42A6B8'},{offset:1,color:'#F0F8FB'}]):
+    '#D9F0F2'}}]
+ },'선택 MIRAE 영역 시계열 그래프');
 }
 export function renderPeriodHeatmap(id,periods,competencies,{onSelect}={}){
  if(!periods.length||!periods.some(p=>competencies.some(c=>Number(p.competencies?.[c.code])>0)))
