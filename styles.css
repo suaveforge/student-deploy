@@ -48,7 +48,7 @@ dialog.academic-viz #modal-body{max-height:76vh}
 .chart-period-heatmap{height:330px}
 .chart-evidence{margin:15px 0}
 .chart-evidence h4{font-size:13px;margin:16px 0 10px;color:#294e69}
-.chart-proof-actions{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0}
+.chart-proof-actions{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0;position:sticky;top:0;z-index:3;background:#fff;padding:9px 2px;border-bottom:1px solid #e8eef4}
 .chart-proof-actions .btn{min-width:46px;padding:6px 10px}
 .chart-evidence .table-scroll{max-height:290px}
 .chart-proof-empty{font-size:12px;color:#6c8296;padding:13px;background:#f7fafd;border-radius:9px}
