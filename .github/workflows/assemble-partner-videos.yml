@@ -1,0 +1,47 @@
+name: Assemble verified partner preview MP4 files
+on:
+  push:
+    branches: [partner-videos-20261123]
+    paths:
+      - 'media-transfer/manifest.ready'
+permissions:
+  contents: write
+jobs:
+  video:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - name: Reassemble and verify unchanged original media
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          mkdir -p partner-video
+          cat media-transfer/student-part-*.bin > partner-video/yonsei-student-demo.mp4
+          cat media-transfer/namdong-part-*.bin > partner-video/namdong-haru-demo.mp4
+          printf '%s  %s\n' \
+            '516a351736231f324f853e0e15af7afb4c9b6badadf09d69ea88ed568f82fefa' \
+            'partner-video/yonsei-student-demo.mp4' \
+            '0cddfaa89c28585fcba6f8c05c95db122a9d356501781d08a05f2c725d0cd90d' \
+            'partner-video/namdong-haru-demo.mp4' | sha256sum --check -
+          test "$(wc -c < partner-video/yonsei-student-demo.mp4)" -eq 12788088
+          test "$(wc -c < partner-video/namdong-haru-demo.mp4)" -eq 3845678
+          python3 - <<'PY'
+          from pathlib import Path
+          for f in Path('partner-video').glob('*.mp4'):
+              with open(f,'rb') as fp:
+                  assert fp.read(32).find(b'ftyp')>=0, f
+              print('VIDEO_VERIFIED',f, f.stat().st_size)
+          PY
+      - name: Commit only validated MP4 to isolated public share branch
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          git config user.name 'SuaveForge Partner Video Share'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git rm -rq media-transfer
+          git add partner-video/*.mp4
+          git commit -m 'Publish verified partner demo MP4 files (separate share branch)'
+          git push origin HEAD:partner-videos-20261123
